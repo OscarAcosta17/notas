@@ -7,6 +7,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 ## 📥 Descargar APK (Versiones)
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
+### [v1.0.3] - Agenda y Rediseño de Navegación
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.3.apk](./releases/notas-v1.0.3.apk)
+
+**Novedades y Características:**
+- **Pestañas de Navegación**: Nuevo selector horizontal de semestres en la vista principal y burbuja de navegación inferior.
+- **Agenda de Evaluaciones**: Nueva vista dedicada para organizar cronológicamente todas tus evaluaciones y sus fechas.
+- **Widget de Android Mejorado**: Diseño más moderno con esquinas redondeadas y soporte para hora detallada de las evaluaciones.
+- **Actualizaciones Silenciosas**: Sistema de notificaciones en segundo plano para avisarte de futuras actualizaciones.
+
+---
 
 ### [v1.0.1] - Mejoras de Calidad de Vida (QoL)
 **Fecha**: Julio 2026
