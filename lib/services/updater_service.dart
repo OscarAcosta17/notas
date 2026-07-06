@@ -92,7 +92,9 @@ class UpdaterService {
     List<int> currParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
     List<int> latestParts = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
     
-    for (int i = 0; i < 3; i++) {
+    int maxLength = currParts.length > latestParts.length ? currParts.length : latestParts.length;
+    
+    for (int i = 0; i < maxLength; i++) {
       int c = i < currParts.length ? currParts[i] : 0;
       int l = i < latestParts.length ? latestParts[i] : 0;
       if (l > c) return true;
