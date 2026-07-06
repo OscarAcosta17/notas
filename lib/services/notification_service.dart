@@ -16,8 +16,9 @@ class NotificationService {
   }
 
   static Future<bool> requestPermissions() async {
-    final status = await Permission.notification.request();
-    return status.isGranted;
+    final statusNotif = await Permission.notification.request();
+    final statusAlarm = await Permission.scheduleExactAlarm.request();
+    return statusNotif.isGranted && (statusAlarm.isGranted || statusAlarm.isRestricted); // Restricted might mean it's not applicable or already allowed by default on older OS
   }
 
   static Future<void> showInstantNotification(String title, String body) async {

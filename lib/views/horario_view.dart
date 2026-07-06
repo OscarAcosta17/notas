@@ -15,6 +15,8 @@ class _HorarioViewState extends State<HorarioView> {
   bool _isLoading = true;
   List<ClaseHorario> _clases = [];
   bool _notificationsEnabled = true;
+  String _semesterName = '';
+  List<Map<String, dynamic>> _subjects = [];
 
   final List<String> _dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
@@ -35,8 +37,16 @@ class _HorarioViewState extends State<HorarioView> {
   Future<void> _loadHorario() async {
     final db = DatabaseHelper.instance;
     final maps = await db.queryHorariosBySemester(widget.semesterId);
+    
+    final semesters = await db.queryAllSemesters();
+    final currentSem = semesters.firstWhere((s) => s['id'] == widget.semesterId, orElse: () => {'name': ''});
+    
+    final subjects = await db.querySubjectsBySemester(widget.semesterId);
+
     setState(() {
       _clases = maps.map((e) => ClaseHorario.fromMap(e)).toList();
+      _semesterName = currentSem['name'] as String;
+      _subjects = subjects;
       _isLoading = false;
     });
   }
@@ -79,7 +89,14 @@ class _HorarioViewState extends State<HorarioView> {
   }
 
   void _showAddDialog(int diaSemana) {
-    final nameCtrl = TextEditingController();
+    if (_subjects.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Crea al menos un ramo en este semestre primero.')),
+      );
+      return;
+    }
+
+    String? selectedSubjectName = _subjects.first['name'] as String;
     final salaCtrl = TextEditingController();
     final paraleloCtrl = TextEditingController();
     int selectedBloque = 1;
@@ -95,10 +112,19 @@ class _HorarioViewState extends State<HorarioView> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Nombre del Ramo'),
-                      textCapitalization: TextCapitalization.words,
+                    DropdownButtonFormField<String>(
+                      value: selectedSubjectName,
+                      decoration: const InputDecoration(labelText: 'Ramo'),
+                      items: _subjects.map((s) {
+                        final name = s['name'] as String;
+                        return DropdownMenuItem<String>(
+                          value: name,
+                          child: Text(name),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setStateSB(() => selectedSubjectName = val);
+                      },
                     ),
                     DropdownButtonFormField<int>(
                       value: selectedBloque,
@@ -131,9 +157,9 @@ class _HorarioViewState extends State<HorarioView> {
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    if (nameCtrl.text.isNotEmpty) {
+                    if (selectedSubjectName != null) {
                       _addClase(
-                        nameCtrl.text.trim(),
+                        selectedSubjectName!,
                         diaSemana,
                         selectedBloque,
                         salaCtrl.text.trim(),
@@ -193,7 +219,7 @@ class _HorarioViewState extends State<HorarioView> {
       child: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(
-          title: Text('Horario de Clases', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+          title: Text('Horario - $_semesterName', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 18)),
           backgroundColor: Theme.of(context).colorScheme.surface,
           elevation: 0,
           actions: [
@@ -226,7 +252,7 @@ class _HorarioViewState extends State<HorarioView> {
                   const Center(child: Text('No hay clases este día.', style: TextStyle(color: Colors.grey)))
                 else
                   ListView.builder(
-                    padding: const EdgeInsets.all(16).copyWith(bottom: 100),
+                    padding: const EdgeInsets.all(16).copyWith(bottom: 160),
                     itemCount: clasesDia.length,
                     itemBuilder: (context, i) {
                       final c = clasesDia[i];
@@ -262,7 +288,7 @@ class _HorarioViewState extends State<HorarioView> {
                     },
                   ),
                 Positioned(
-                  bottom: 24,
+                  bottom: 100,
                   right: 24,
                   child: FloatingActionButton(
                     heroTag: 'fab_add_clase_$dia',

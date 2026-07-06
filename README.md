@@ -7,6 +7,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 ## 📥 Descargar APK (Versiones)
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
+### [v1.0.4.1] - Hotfix: UI de Horarios y Alarmas Exactas
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.4.1.apk](./releases/notas-v1.0.4.1.apk)
+
+**Correcciones (Hotfix):**
+- **Interfaz Arreglada**: Se ajustó la altura del botón para añadir clases para evitar que sea tapado por la burbuja de navegación.
+- **Ramos Inteligentes**: Ahora al añadir una clase al horario, el sistema solo te permite elegir entre los ramos creados previamente para el semestre seleccionado, evitando errores tipográficos.
+- **Notificaciones 100% Funcionales (Android 14)**: Se adaptó el sistema para solicitar explícitamente el permiso de "Alarmas exactas y recordatorios" (`SCHEDULE_EXACT_ALARM`), solucionando el problema por el cual las notificaciones del horario no sonaban en Android 12 y superior.
+
+---
+
 ### [v1.0.4] - Horario de Clases y Notificaciones
 **Fecha**: Julio 2026
 
