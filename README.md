@@ -29,15 +29,27 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 - **Copias de Seguridad**: ¡Tus datos ahora están más seguros! Puedes Exportar e Importar todo el estado de tu aplicación (ramos, evaluaciones, horarios) con un solo botón en Configuración.
 - **Acerca de Notas**: Se movió la información de versión, actualizaciones, licencias y políticas a una sección dedicada y más ordenada.
 
+---
+
 ### [v1.0.7] - Hotfix Auto-Updater (Memory Issue)
 **Fecha**: Julio 2026
 
 **📦 Enlace de Descarga:** [NotasApp-v1.0.7.apk](./releases/notas-v1.0.7.apk)
 
 **Novedades y Características:**
-- **Horario de Clases**: Nueva pestaña para visualizar tu horario universitario distribuido en bloques y por día de la semana.
-- **Notificaciones 15 min antes**: Agrega tus clases a los bloques y recibe un aviso inteligente antes de que empiecen.
-- **Mejoras en la Agenda**: Las evaluaciones en la agenda ahora están ordenadas mes a mes.
+- **Descargas Estables**: Se corrigió un error crítico `OutOfMemory` que provocaba que la aplicación se cerrara al descargar actualizaciones OTA muy pesadas, migrando la descarga de memoria RAM pura a una escritura directa en disco mediante `IOSink`.
+
+---
+
+### [v1.0.6] - Correcciones y Edición de Agenda/Horario
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.6.apk](./releases/notas-v1.0.6.apk)
+
+**Novedades y Características:**
+- **Gestión Total**: Ahora puedes mantener presionado cualquier clase en tu horario o cualquier evaluación en la agenda para Editarla o Eliminarla rápidamente.
+- **Correcciones Visuales**: Se ajustó la altura del botón "+" (FAB) en varias pantallas para evitar que se corte con el menú inferior.
+- **Test de Notificaciones**: Nuevo botón en la configuración para comprobar que los avisos están funcionando.
 
 ### [v1.0.4] - Horario de Clases y Notificaciones
 **Fecha**: Julio 2026
