@@ -127,6 +127,14 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     }
                   },
                 ),
+                ListTile(
+                  leading: const Icon(Icons.bug_report),
+                  title: const Text('Probar Notificaciones'),
+                  subtitle: const Text('Lanzar una notificación de prueba ahora'),
+                  onTap: () {
+                    NotificationService.showInstantNotification('Prueba', '¡Las notificaciones funcionan correctamente!');
+                  },
+                ),
               ],
             ),
           ),

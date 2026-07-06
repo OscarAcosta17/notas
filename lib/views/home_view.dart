@@ -112,17 +112,20 @@ class _HomeViewState extends ConsumerState<HomeView> {
           ],
         ),
         body: const Center(child: Text('No hay semestres creados.', style: TextStyle(color: Colors.grey))),
-        floatingActionButton: FloatingActionButton(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          foregroundColor: Theme.of(context).colorScheme.onPrimary,
-          elevation: 2,
-          child: const Icon(Icons.add),
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => const AddSemestreDialog(),
-            );
-          },
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 80),
+          child: FloatingActionButton(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            elevation: 2,
+            child: const Icon(Icons.add),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => const AddSemestreDialog(),
+              );
+            },
+          ),
         ),
       );
     }

@@ -66,6 +66,11 @@ class NotificationService {
     }
   }
 
+  static Future<void> cancelEvaluationReminder(int evalId) async {
+    await _notificationsPlugin.cancel(id: (evalId * 100) + 1);
+    await _notificationsPlugin.cancel(id: (evalId * 100) + 2);
+  }
+
   static Future<void> _scheduleSpecific({
     required int id,
     required String title,
@@ -120,9 +125,27 @@ class NotificationService {
     tz.TZDateTime now = tz.TZDateTime.now(tz.local);
     tz.TZDateTime scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
     
-    // clase.diaSemana: 1=Lunes, 7=Domingo (Igual que DateTime.weekday)
-    while (scheduledDate.weekday != clase.diaSemana || scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    // Si la clase es hoy y la hora de notificación (15 min antes) ya pasó O está pasando ahora,
+    // flutter_local_notifications podría fallar si intentamos agendar en el pasado.
+    // Si ya pasó la hora de notificación de hoy, que avise la próxima semana.
+    if (scheduledDate.weekday == clase.diaSemana && scheduledDate.isBefore(now)) {
+       // Revisa si la clase en sí (hora original) todavía no termina, pero mejor simplemente lo mandamos a la otra semana
+       // para el recordatorio semanal, y lanzamos una notificación "Instantánea" para avisarle ahora mismo
+       // si está dentro del bloque.
+       // Bloque dura 1h 10m (70 mins). hora original de inicio:
+       final originalStart = scheduledDate.add(const Duration(minutes: 15));
+       final blockEnd = originalStart.add(const Duration(minutes: 70));
+       
+       if (now.isBefore(blockEnd)) {
+         // La clase está por empezar o en curso hoy mismo! Lanzar alerta inmediata.
+         await showInstantNotification('¡Clase hoy!', '${clase.subjectName} en sala ${clase.sala}');
+       }
+       // Y dejar que scheduledDate avance a la próxima semana
+       scheduledDate = scheduledDate.add(const Duration(days: 7));
+    } else {
+      while (scheduledDate.weekday != clase.diaSemana || scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
     }
 
     const androidPlatformChannelSpecifics = AndroidNotificationDetails(

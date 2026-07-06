@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/evaluacion.dart';
 import '../services/database_helper.dart';
+import '../services/notification_service.dart';
 
 class AgendaView extends StatefulWidget {
   const AgendaView({super.key});
@@ -79,6 +80,133 @@ class _AgendaViewState extends State<AgendaView> {
   String _getMonthName(int month) {
     final months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     return months[month - 1];
+  }
+
+  void _showActionDialog(Evaluacion eval, String subjectName) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Editar fecha o nombre'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditDialog(eval, subjectName);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Eliminar de agenda', style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  eval.fecha = null; // Removing date removes it from agenda, keeping the evaluation itself
+                  await DatabaseHelper.instance.updateEvaluation(eval.toMap());
+                  await NotificationService.cancelEvaluationReminder(eval.id!);
+                  _loadAgenda();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditDialog(Evaluacion eval, String subjectName) {
+    final nameCtrl = TextEditingController(text: eval.nombre);
+    DateTime? selectedDate = eval.fecha;
+    TimeOfDay? selectedTime = eval.fecha != null ? TimeOfDay.fromDateTime(eval.fecha!) : null;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            return AlertDialog(
+              title: const Text('Editar Evaluación'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Nombre'),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.calendar_today),
+                          label: Text(selectedDate != null ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}' : 'Fecha'),
+                          onPressed: () async {
+                            final d = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate ?? DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (d != null) {
+                              setStateSB(() {
+                                selectedDate = DateTime(d.year, d.month, d.day, selectedTime?.hour ?? 0, selectedTime?.minute ?? 0);
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      Expanded(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.access_time),
+                          label: Text(selectedTime != null ? selectedTime!.format(context) : 'Hora'),
+                          onPressed: () async {
+                            final t = await showTimePicker(
+                              context: context,
+                              initialTime: selectedTime ?? TimeOfDay.now(),
+                            );
+                            if (t != null) {
+                              setStateSB(() {
+                                selectedTime = t;
+                                if (selectedDate != null) {
+                                  selectedDate = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, t.hour, t.minute);
+                                }
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (nameCtrl.text.isNotEmpty) {
+                      eval.nombre = nameCtrl.text;
+                      eval.fecha = selectedDate;
+                      await DatabaseHelper.instance.updateEvaluation(eval.toMap());
+                      
+                      await NotificationService.cancelEvaluationReminder(eval.id!);
+                      if (eval.fecha != null) {
+                        await NotificationService.scheduleEvaluationReminder(eval, subjectName);
+                      }
+                      
+                      _loadAgenda();
+                      if (context.mounted) Navigator.pop(context);
+                    }
+                  },
+                  child: const Text('Guardar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -184,6 +312,7 @@ class _AgendaViewState extends State<AgendaView> {
                       ),
                     ],
                   ),
+                  onLongPress: () => _showActionDialog(eval, subjectName),
                 ),
               );
             }),

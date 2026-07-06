@@ -65,8 +65,9 @@ class _HorarioViewState extends State<HorarioView> {
     }
   }
 
-  Future<void> _addClase(String subjectName, int diaSemana, int bloque, String sala, String paralelo) async {
+  Future<void> _saveClase(String subjectName, int diaSemana, int bloque, String sala, String paralelo, [int? existingId]) async {
     final nueva = ClaseHorario(
+      id: existingId,
       semesterId: widget.semesterId,
       subjectName: subjectName,
       diaSemana: diaSemana,
@@ -74,8 +75,14 @@ class _HorarioViewState extends State<HorarioView> {
       sala: sala,
       paralelo: paralelo,
     );
-    final id = await DatabaseHelper.instance.insertHorario(nueva.toMap());
-    nueva.id = id;
+    if (existingId == null) {
+      final id = await DatabaseHelper.instance.insertHorario(nueva.toMap());
+      nueva.id = id;
+    } else {
+      await DatabaseHelper.instance.updateHorario(nueva.toMap());
+      await NotificationService.cancelClassReminder(existingId);
+    }
+    
     if (_notificationsEnabled) {
       await NotificationService.scheduleClassReminder(nueva);
     }
@@ -88,7 +95,7 @@ class _HorarioViewState extends State<HorarioView> {
     _loadHorario();
   }
 
-  void _showAddDialog(int diaSemana) {
+  void _showAddEditDialog(int diaSemana, [ClaseHorario? existingClase]) {
     if (_subjects.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Crea al menos un ramo en este semestre primero.')),
@@ -96,10 +103,15 @@ class _HorarioViewState extends State<HorarioView> {
       return;
     }
 
-    String? selectedSubjectName = _subjects.first['name'] as String;
-    final salaCtrl = TextEditingController();
-    final paraleloCtrl = TextEditingController();
-    int selectedBloque = 1;
+    String? selectedSubjectName = existingClase?.subjectName ?? _subjects.first['name'] as String;
+    // Verifica si el ramo de la clase existente aún está en la lista
+    if (!_subjects.any((s) => s['name'] == selectedSubjectName)) {
+      selectedSubjectName = _subjects.first['name'] as String;
+    }
+
+    final salaCtrl = TextEditingController(text: existingClase?.sala ?? '');
+    final paraleloCtrl = TextEditingController(text: existingClase?.paralelo ?? '');
+    int selectedBloque = existingClase?.bloque ?? 1;
 
     showDialog(
       context: context,
@@ -107,7 +119,7 @@ class _HorarioViewState extends State<HorarioView> {
         return StatefulBuilder(
           builder: (context, setStateSB) {
             return AlertDialog(
-              title: Text('Añadir clase al ${_dias[diaSemana - 1]}'),
+              title: Text(existingClase == null ? 'Añadir clase al ${_dias[diaSemana - 1]}' : 'Editar clase'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -158,12 +170,13 @@ class _HorarioViewState extends State<HorarioView> {
                 ElevatedButton(
                   onPressed: () {
                     if (selectedSubjectName != null) {
-                      _addClase(
+                      _saveClase(
                         selectedSubjectName!,
                         diaSemana,
                         selectedBloque,
                         salaCtrl.text.trim(),
                         paraleloCtrl.text.trim(),
+                        existingClase?.id,
                       );
                       Navigator.pop(context);
                     }
@@ -283,6 +296,7 @@ class _HorarioViewState extends State<HorarioView> {
                             icon: const Icon(Icons.delete_outline, color: Colors.red),
                             onPressed: () => _deleteClase(c),
                           ),
+                          onLongPress: () => _showAddEditDialog(dia, c),
                         ),
                       );
                     },
@@ -292,7 +306,7 @@ class _HorarioViewState extends State<HorarioView> {
                   right: 24,
                   child: FloatingActionButton(
                     heroTag: 'fab_add_clase_$dia',
-                    onPressed: () => _showAddDialog(dia),
+                    onPressed: () => _showAddEditDialog(dia),
                     child: const Icon(Icons.add),
                   ),
                 )

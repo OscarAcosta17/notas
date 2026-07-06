@@ -155,17 +155,20 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
       ),
       floatingActionButton: isSelectionMode
           ? null
-          : FloatingActionButton(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              elevation: 2,
-              child: const Icon(Icons.add),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AddRamoDialog(semestreId: widget.semestre.id!),
-                );
-              },
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 80),
+              child: FloatingActionButton(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                elevation: 2,
+                child: const Icon(Icons.add),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AddRamoDialog(semestreId: widget.semestre.id!),
+                  );
+                },
+              ),
             ),
     );
   }
