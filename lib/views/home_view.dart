@@ -14,12 +14,12 @@ class HomeView extends ConsumerWidget {
     final semestres = ref.watch(semestreProvider);
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Mis Semestres', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
+        title: Text('Mis Semestres', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -40,13 +40,13 @@ class HomeView extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final sem = semestres[index];
                 return Card(
-                  color: Colors.grey.shade100,
+                  color: Theme.of(context).colorScheme.surface,
                   elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade300)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1))),
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    title: Text(sem.nombre, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: Colors.black87)),
+                    title: Text(sem.nombre, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                     onTap: () {
                       Navigator.push(
@@ -62,8 +62,8 @@ class HomeView extends ConsumerWidget {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         elevation: 2,
         child: const Icon(Icons.add),
         onPressed: () {

@@ -25,8 +25,8 @@ class _AddSemestreDialogState extends ConsumerState<AddSemestreDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
-      title: const Text('Nuevo Semestre', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      title: Text('Nuevo Semestre', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
       content: TextField(
         controller: _controller,
         autofocus: true,
@@ -35,7 +35,7 @@ class _AddSemestreDialogState extends ConsumerState<AddSemestreDialog> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.black, width: 2),
+            borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2),
           ),
         ),
         onSubmitted: (_) => _submit(),
@@ -47,8 +47,8 @@ class _AddSemestreDialogState extends ConsumerState<AddSemestreDialog> {
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
           onPressed: _submit,

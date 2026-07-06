@@ -90,7 +90,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Peso del grupo: \${_porcentaje.toInt()}%',
+                'Peso del grupo: ${_porcentaje.toInt()}%',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               if (pesoMaximoDisponible == 0)
@@ -107,7 +107,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                   min: 0,
                   max: pesoMaximoDisponible,
                   divisions: pesoMaximoDisponible > 0 ? pesoMaximoDisponible.toInt() : 1,
-                  label: '\${_porcentaje.toInt()}%',
+                  label: '${_porcentaje.toInt()}%',
                   onChanged: (val) {
                     setState(() {
                       _porcentaje = val;
@@ -127,7 +127,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
               ),
               if (_tieneNotaMinima) ...[
                 Text(
-                  'Nota Mínima Requerida: \${_notaMinima.toStringAsFixed(1)}',
+                  'Nota Mínima Requerida: ${_notaMinima.toStringAsFixed(1)}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 Slider(

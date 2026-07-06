@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../viewmodels/settings_provider.dart';
+import '../services/updater_service.dart';
 
 class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
@@ -42,6 +43,15 @@ class SettingsView extends ConsumerWidget {
                 }
               },
             ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.system_update),
+            title: const Text('Buscar Actualizaciones'),
+            subtitle: const Text('Verifica si hay una nueva versión de la app'),
+            onTap: () {
+              UpdaterService.checkForUpdates(context);
+            },
           ),
         ],
       ),

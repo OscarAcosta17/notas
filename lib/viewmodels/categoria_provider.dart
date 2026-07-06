@@ -31,7 +31,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       }
       state = cats;
     } catch (e) {
-      debugPrint("Error al cargar categorias: \$e");
+      debugPrint("Error al cargar categorias: $e");
     }
   }
 
@@ -40,7 +40,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.insertCategory(categoria.toMap());
       await cargarCategorias();
     } catch (e) {
-      debugPrint("Error al agregar categoria: \$e");
+      debugPrint("Error al agregar categoria: $e");
     }
   }
 
@@ -49,7 +49,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.updateCategory(categoria.toMap());
       await cargarCategorias();
     } catch (e) {
-      debugPrint("Error al actualizar categoria: \$e");
+      debugPrint("Error al actualizar categoria: $e");
     }
   }
 
@@ -58,7 +58,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.deleteCategory(id);
       await cargarCategorias();
     } catch (e) {
-      debugPrint("Error al eliminar categoria: \$e");
+      debugPrint("Error al eliminar categoria: $e");
     }
   }
 
@@ -68,7 +68,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.insertEvaluation(evaluacion.toMap());
       await cargarCategorias();
     } catch (e) {
-      debugPrint("Error al agregar evaluacion: \$e");
+      debugPrint("Error al agregar evaluacion: $e");
     }
   }
 
@@ -78,7 +78,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.updateEvaluation(evaluacion.toMap());
       await cargarCategorias(); // Refrescar jerarquia
     } catch (e) {
-      debugPrint("Error al actualizar evaluacion: \$e");
+      debugPrint("Error al actualizar evaluacion: $e");
     }
   }
 
@@ -87,7 +87,7 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
       await DatabaseHelper.instance.deleteEvaluation(id);
       await cargarCategorias();
     } catch (e) {
-      debugPrint("Error al eliminar evaluacion: \$e");
+      debugPrint("Error al eliminar evaluacion: $e");
     }
   }
 }

@@ -23,7 +23,7 @@ class EvaluacionNotifier extends Notifier<List<Evaluacion>> {
       final data = await DatabaseHelper.instance.queryEvaluationsByCategory(arg);
       state = data.map((e) => Evaluacion.fromMap(e)).toList();
     } catch (e) {
-      debugPrint("Error al cargar evaluaciones: \$e");
+      debugPrint("Error al cargar evaluaciones: $e");
     }
   }
 
@@ -32,7 +32,7 @@ class EvaluacionNotifier extends Notifier<List<Evaluacion>> {
       await DatabaseHelper.instance.insertEvaluation(evaluacion.toMap());
       await cargarEvaluaciones();
     } catch (e) {
-      debugPrint("Error al agregar evaluacion: \$e");
+      debugPrint("Error al agregar evaluacion: $e");
     }
   }
 
@@ -41,7 +41,7 @@ class EvaluacionNotifier extends Notifier<List<Evaluacion>> {
       await DatabaseHelper.instance.updateEvaluation(evaluacion.toMap());
       await cargarEvaluaciones();
     } catch (e) {
-      debugPrint("Error al actualizar evaluacion: \$e");
+      debugPrint("Error al actualizar evaluacion: $e");
     }
   }
 
@@ -50,7 +50,7 @@ class EvaluacionNotifier extends Notifier<List<Evaluacion>> {
       await DatabaseHelper.instance.deleteEvaluation(id);
       await cargarEvaluaciones();
     } catch (e) {
-      debugPrint("Error al eliminar evaluacion: \$e");
+      debugPrint("Error al eliminar evaluacion: $e");
     }
   }
 }

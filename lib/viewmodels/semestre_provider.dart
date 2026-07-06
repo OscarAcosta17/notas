@@ -17,7 +17,7 @@ class SemestreNotifier extends Notifier<List<Semestre>> {
       final data = await DatabaseHelper.instance.queryAllSemesters();
       state = data.map((e) => Semestre.fromMap(e)).toList();
     } catch (e) {
-      debugPrint("Error al cargar semestres: \$e");
+      debugPrint("Error al cargar semestres: $e");
     }
   }
 
@@ -26,7 +26,7 @@ class SemestreNotifier extends Notifier<List<Semestre>> {
       await DatabaseHelper.instance.insertSemester(semestre.toMap());
       await cargarSemestres();
     } catch (e) {
-      debugPrint("Error al agregar semestre: \$e");
+      debugPrint("Error al agregar semestre: $e");
     }
   }
 
@@ -35,7 +35,7 @@ class SemestreNotifier extends Notifier<List<Semestre>> {
       await DatabaseHelper.instance.updateSemester(semestre.toMap());
       await cargarSemestres();
     } catch (e) {
-      debugPrint("Error al actualizar semestre: \$e");
+      debugPrint("Error al actualizar semestre: $e");
     }
   }
 
@@ -44,7 +44,7 @@ class SemestreNotifier extends Notifier<List<Semestre>> {
       await DatabaseHelper.instance.deleteSemester(id);
       await cargarSemestres();
     } catch (e) {
-      debugPrint("Error al eliminar semestre: \$e");
+      debugPrint("Error al eliminar semestre: $e");
     }
   }
 }

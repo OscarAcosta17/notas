@@ -44,14 +44,14 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Configurar Ramo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Colors.black)),
+            Text('Configurar Ramo', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Theme.of(context).colorScheme.onSurface)),
             const SizedBox(height: 16),
             TextField(
               controller: _nombreController,
@@ -60,7 +60,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black, width: 2),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2),
                 ),
               ),
             ),
@@ -72,7 +72,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black, width: 2),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2),
                 ),
               ),
               items: ['Aritmético', 'Geométrico'].map((String value) {
@@ -94,7 +94,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.black, width: 2),
+                  borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2),
                 ),
               ),
             ),
@@ -102,7 +102,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
             SwitchListTile(
               title: const Text('¿Tiene Examen Global?', style: TextStyle(fontWeight: FontWeight.w600)),
               value: _tieneGlobal,
-              activeThumbColor: Colors.black,
+              activeThumbColor: Theme.of(context).colorScheme.primary,
               contentPadding: EdgeInsets.zero,
               onChanged: (val) => setState(() => _tieneGlobal = val),
             ),
@@ -115,7 +115,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                     title: const Text('Reemplaza peor nota (Certamen)'),
                     subtitle: const Text('Si está apagado, promediará con la nota final.'),
                     value: _reemplazaPeorNota,
-                    activeThumbColor: Colors.black,
+                    activeThumbColor: Theme.of(context).colorScheme.primary,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (val) => setState(() => _reemplazaPeorNota = val),
                   ),
@@ -132,8 +132,8 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   onPressed: _submit,

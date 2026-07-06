@@ -23,7 +23,7 @@ class RamoNotifier extends Notifier<List<Ramo>> {
       final data = await DatabaseHelper.instance.querySubjectsBySemester(arg);
       state = data.map((e) => Ramo.fromMap(e)).toList();
     } catch (e) {
-      debugPrint("Error al cargar ramos: \$e");
+      debugPrint("Error al cargar ramos: $e");
     }
   }
 
@@ -32,7 +32,7 @@ class RamoNotifier extends Notifier<List<Ramo>> {
       await DatabaseHelper.instance.insertSubject(ramo.toMap());
       await cargarRamos();
     } catch (e) {
-      debugPrint("Error al agregar ramo: \$e");
+      debugPrint("Error al agregar ramo: $e");
     }
   }
 
@@ -41,7 +41,7 @@ class RamoNotifier extends Notifier<List<Ramo>> {
       await DatabaseHelper.instance.updateSubject(ramo.toMap());
       await cargarRamos();
     } catch (e) {
-      debugPrint("Error al actualizar ramo: \$e");
+      debugPrint("Error al actualizar ramo: $e");
     }
   }
 
@@ -50,7 +50,7 @@ class RamoNotifier extends Notifier<List<Ramo>> {
       await DatabaseHelper.instance.deleteSubject(id);
       await cargarRamos();
     } catch (e) {
-      debugPrint("Error al eliminar ramo: \$e");
+      debugPrint("Error al eliminar ramo: $e");
     }
   }
 }

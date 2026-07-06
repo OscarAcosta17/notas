@@ -50,7 +50,7 @@ class RamoDetailView extends ConsumerWidget {
                         children: [
                           const Text('Nota Actual', style: TextStyle(fontSize: 14)),
                           const SizedBox(height: 8),
-                          Text(notaActual.toString(), style: TextStyle(color: notaColor, fontSize: 28, fontWeight: FontWeight.bold)),
+                          Text(notaActual.toStringAsFixed(2), style: TextStyle(color: notaColor, fontSize: 28, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
@@ -67,7 +67,7 @@ class RamoDetailView extends ConsumerWidget {
                         children: [
                           const Text('Necesaria', style: TextStyle(fontSize: 14)),
                           const SizedBox(height: 8),
-                          Text(isApproved ? '¡Lista!' : notaNecesaria.toString(), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                          Text(isApproved ? '¡Lista!' : notaNecesaria.toStringAsFixed(2), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ),
