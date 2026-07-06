@@ -20,6 +20,25 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 
 ---
 
+### [v1.0.8] - Reorganización y Copias de Seguridad
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.8.apk](./releases/notas-v1.0.8.apk)
+
+**Novedades y Características:**
+- **Copias de Seguridad**: ¡Tus datos ahora están más seguros! Puedes Exportar e Importar todo el estado de tu aplicación (ramos, evaluaciones, horarios) con un solo botón en Configuración.
+- **Acerca de Notas**: Se movió la información de versión, actualizaciones, licencias y políticas a una sección dedicada y más ordenada.
+
+### [v1.0.7] - Hotfix Auto-Updater (Memory Issue)
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.7.apk](./releases/notas-v1.0.7.apk)
+
+**Novedades y Características:**
+- **Horario de Clases**: Nueva pestaña para visualizar tu horario universitario distribuido en bloques y por día de la semana.
+- **Notificaciones 15 min antes**: Agrega tus clases a los bloques y recibe un aviso inteligente antes de que empiecen.
+- **Mejoras en la Agenda**: Las evaluaciones en la agenda ahora están ordenadas mes a mes.
+
 ### [v1.0.4] - Horario de Clases y Notificaciones
 **Fecha**: Julio 2026
 

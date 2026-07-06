@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_dynamic_icon_plus/flutter_dynamic_icon_plus.dart';
 import '../viewmodels/settings_provider.dart';
-import '../services/updater_service.dart';
 import '../services/notification_service.dart';
+import '../services/database_helper.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+import 'app_info_view.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
   const SettingsView({super.key});
@@ -14,19 +17,56 @@ class SettingsView extends ConsumerStatefulWidget {
 }
 
 class _SettingsViewState extends ConsumerState<SettingsView> {
-  String _version = 'Cargando...';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadVersion();
+  Future<void> _exportDatabase() async {
+    try {
+      final dbPath = await DatabaseHelper.instance.getDatabasePath();
+      // ignore: deprecated_member_use
+      await Share.shareXFiles([XFile(dbPath)], text: 'Copia de seguridad de NotasApp (NotasDB.db)');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
+      }
+    }
   }
 
-  Future<void> _loadVersion() async {
-    final info = await PackageInfo.fromPlatform();
-    setState(() {
-      _version = 'v${info.version}+${info.buildNumber}';
-    });
+  Future<void> _importDatabase() async {
+    try {
+      FilePickerResult? result = await FilePicker.pickFiles(
+        type: FileType.any,
+      );
+
+      if (result != null && result.files.single.path != null) {
+        File sourceFile = File(result.files.single.path!);
+        if (!sourceFile.path.endsWith('.db')) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecciona un archivo .db válido.')));
+          return;
+        }
+        
+        final dbPath = await DatabaseHelper.instance.getDatabasePath();
+        await sourceFile.copy(dbPath);
+        
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Copia Restaurada'),
+              content: const Text('La copia de seguridad se ha restaurado con éxito. Por favor, reinicia la aplicación para cargar los nuevos datos.'),
+              actions: [
+                TextButton(
+                  onPressed: () => exit(0),
+                  child: const Text('Cerrar App'),
+                )
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al importar: $e')));
+      }
+    }
   }
 
   Future<void> _changeIcon(String? iconName) async {
@@ -105,12 +145,32 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   onTap: () => _changeIcon('com.example.notas.Icon2'),
                 ),
                 const Divider(),
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('Datos', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
                 ListTile(
-                  leading: const Icon(Icons.system_update),
-                  title: const Text('Buscar Actualizaciones'),
-                  subtitle: const Text('Verifica si hay una nueva versión de la app'),
+                  leading: const Icon(Icons.upload_file),
+                  title: const Text('Exportar Copia de Seguridad'),
+                  subtitle: const Text('Guarda tus notas y ramos en un archivo'),
+                  onTap: _exportDatabase,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.download),
+                  title: const Text('Importar Copia de Seguridad'),
+                  subtitle: const Text('Restaura un archivo de copia de seguridad anterior'),
+                  onTap: _importDatabase,
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.info),
+                  title: const Text('Acerca de Notas'),
+                  subtitle: const Text('Versión, Actualizaciones, Novedades y Privacidad'),
                   onTap: () {
-                    UpdaterService.checkForUpdates(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AppInfoView()),
+                    );
                   },
                 ),
                 const Divider(),
@@ -136,13 +196,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                   },
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              'Versión actual: $_version',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
             ),
           ),
         ],
