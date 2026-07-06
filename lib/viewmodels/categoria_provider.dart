@@ -72,9 +72,8 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
     }
   }
 
-  Future<void> actualizarNotaEvaluacion(Evaluacion evaluacion, double? nuevaNota) async {
+  Future<void> actualizarEvaluacion(Evaluacion evaluacion) async {
     try {
-      evaluacion.nota = nuevaNota;
       await DatabaseHelper.instance.updateEvaluation(evaluacion.toMap());
       await cargarCategorias(); // Refrescar jerarquia
     } catch (e) {

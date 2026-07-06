@@ -5,7 +5,7 @@ import 'dart:io';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
-  static const _databaseVersion = 3; // Incremented for categories schema
+  static const _databaseVersion = 4; // Incremented for evaluations date schema
 
   // Singleton
   DatabaseHelper._privateConstructor();
@@ -74,6 +74,7 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         specific_weight REAL,
         grade REAL,
+        date TEXT,
         FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
       )
     ''');
@@ -86,6 +87,8 @@ class DatabaseHelper {
       await db.execute('DROP TABLE IF EXISTS subjects');
       await db.execute('DROP TABLE IF EXISTS semesters');
       await _onCreate(db, newVersion);
+    } else if (oldVersion == 3) {
+      await db.execute('ALTER TABLE evaluations ADD COLUMN date TEXT');
     }
   }
 

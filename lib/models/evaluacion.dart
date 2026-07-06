@@ -4,6 +4,7 @@ class Evaluacion {
   String nombre;
   double? porcentajePeso; // If null, means evenly distributed within the category
   double? nota;
+  DateTime? fecha;
 
   Evaluacion({
     this.id,
@@ -11,6 +12,7 @@ class Evaluacion {
     required this.nombre,
     this.porcentajePeso,
     this.nota,
+    this.fecha,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class Evaluacion {
       'name': nombre,
       'specific_weight': porcentajePeso,
       'grade': nota,
+      'date': fecha?.toIso8601String(),
     };
   }
 
@@ -30,6 +33,7 @@ class Evaluacion {
       nombre: map['name'],
       porcentajePeso: map['specific_weight'] != null ? (map['specific_weight'] as num).toDouble() : null,
       nota: map['grade'] != null ? (map['grade'] as num).toDouble() : null,
+      fecha: map['date'] != null ? DateTime.parse(map['date']) : null,
     );
   }
 }
