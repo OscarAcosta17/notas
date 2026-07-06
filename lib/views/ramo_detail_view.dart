@@ -19,13 +19,6 @@ class RamoDetailView extends ConsumerWidget {
     ramo.categorias = categorias;
 
     final notaActual = ramo.calcularNotaActual();
-    final notaNecesaria = ramo.calcularNotaNecesaria();
-    
-    bool isApproved = false;
-    double totalWeight = categorias.fold(0.0, (s, c) => s + c.porcentajeTotal);
-    if (totalWeight >= 100 && notaActual >= ramo.notaAprobacion) {
-      isApproved = true;
-    }
 
     Color notaColor = notaActual >= ramo.notaAprobacion ? Colors.green.shade600 : Colors.red.shade600;
     if (notaActual == 0.0) notaColor = Colors.grey;
@@ -38,42 +31,20 @@ class RamoDetailView extends ConsumerWidget {
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Card(
-                    color: Theme.of(context).colorScheme.surface,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: notaColor, width: 2)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          const Text('Nota Actual', style: TextStyle(fontSize: 14)),
-                          const SizedBox(height: 8),
-                          Text(notaActual.toStringAsFixed(2), style: TextStyle(color: notaColor, fontSize: 28, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
+            width: double.infinity,
+            child: Card(
+              color: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: notaColor, width: 2)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    const Text('Nota Actual', style: TextStyle(fontSize: 14)),
+                    const SizedBox(height: 8),
+                    Text(notaActual.toStringAsFixed(2), style: TextStyle(color: notaColor, fontSize: 28, fontWeight: FontWeight.bold)),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Card(
-                    color: Theme.of(context).colorScheme.surface,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade400)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          const Text('Necesaria', style: TextStyle(fontSize: 14)),
-                          const SizedBox(height: 8),
-                          Text(isApproved ? '¡Lista!' : notaNecesaria.toStringAsFixed(2), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const Divider(),

@@ -8,6 +8,19 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.0.1] - Mejoras de Calidad de Vida (QoL)
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.1.apk](./releases/v1.0.1/NotasApp-v1.0.1.apk)
+
+**Novedades y Características:**
+- **Modo de Selección Múltiple**: Ahora puedes mantener presionado un Semestre o Ramo para entrar en un modo de selección, permitiendo eliminar múltiples elementos a la vez.
+- **Edición Rápida**: Renombra Semestres y re-configura Ramos directamente desde la barra contextual superior al seleccionar un único elemento.
+- **Limpieza de Interfaz**: Se removió el recuadro redundante de nota "Necesaria" dentro de los detalles del ramo, dando más espacio a la nota actual y un aspecto más limpio.
+- **Actualizador Integrado**: Funcionalidad de auto-actualización probada y activa para las futuras versiones.
+
+---
+
 ### [v1.0.0] - Lanzamiento Inicial y Mejoras Core
 **Fecha**: Julio 2026
 
