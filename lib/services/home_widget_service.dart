@@ -35,7 +35,11 @@ class HomeWidgetService {
     } else {
       for (int i = 0; i < proximas.length && i < 3; i++) {
         final ev = proximas[i];
-        widgetText += "• ${ev.nombre} (${ev.fecha!.day}/${ev.fecha!.month})\n";
+        final day = ev.fecha!.day.toString().padLeft(2, '0');
+        final month = ev.fecha!.month.toString().padLeft(2, '0');
+        final hour = ev.fecha!.hour.toString().padLeft(2, '0');
+        final minute = ev.fecha!.minute.toString().padLeft(2, '0');
+        widgetText += "• ${ev.nombre} ($day/$month $hour:$minute)\n";
       }
     }
 

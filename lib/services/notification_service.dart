@@ -13,6 +13,25 @@ class NotificationService {
     await _notificationsPlugin.initialize(settings: initializationSettings);
   }
 
+  static Future<void> showInstantNotification(String title, String body) async {
+    const androidDetails = AndroidNotificationDetails(
+      'update_channel',
+      'Actualizaciones',
+      channelDescription: 'Notificaciones sobre actualizaciones de la aplicación',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    
+    // Usar un ID arbitrario alto para evitar colisión con los recordatorios
+    await _notificationsPlugin.show(
+      id: 9999,
+      title: title,
+      body: body,
+      notificationDetails: details,
+    );
+  }
+
   static Future<void> scheduleEvaluationReminder(Evaluacion ev, String ramoNombre) async {
     if (ev.fecha == null) return;
     

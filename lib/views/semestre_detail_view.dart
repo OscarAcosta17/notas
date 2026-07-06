@@ -8,7 +8,10 @@ import 'ramo_detail_view.dart';
 
 class SemestreDetailView extends ConsumerStatefulWidget {
   final Semestre semestre;
-  const SemestreDetailView({super.key, required this.semestre});
+  final Widget? headerWidget;
+  final List<Widget>? actions;
+  final bool showBackButton;
+  const SemestreDetailView({super.key, required this.semestre, this.headerWidget, this.actions, this.showBackButton = true});
 
   @override
   ConsumerState<SemestreDetailView> createState() => _SemestreDetailViewState();
@@ -90,11 +93,17 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
               backgroundColor: Theme.of(context).colorScheme.surface,
               elevation: 0,
               iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
+              automaticallyImplyLeading: widget.showBackButton,
+              actions: widget.actions,
             ),
-      body: ramos.isEmpty
-          ? const Center(child: Text('No hay ramos configurados.', style: TextStyle(color: Colors.grey)))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16.0),
+      body: Column(
+        children: [
+          if (widget.headerWidget != null) widget.headerWidget!,
+          Expanded(
+            child: ramos.isEmpty
+                ? const Center(child: Text('No hay ramos configurados.', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
               itemCount: ramos.length,
               itemBuilder: (context, index) {
                 final ramo = ramos[index];
@@ -141,6 +150,9 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
                 );
               },
             ),
+          ),
+        ],
+      ),
       floatingActionButton: isSelectionMode
           ? null
           : FloatingActionButton(

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import '../services/notification_service.dart';
 
 class UpdaterService {
   static const String repoOwner = 'OscarAcosta17';
@@ -56,6 +57,34 @@ class UpdaterService {
       }
     } catch (e) {
        if (context.mounted) _showNoUpdateDialog(context, "Error buscando actualizaciones: $e");
+    }
+  }
+
+  static Future<void> checkForUpdatesSilently() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+
+      final url = Uri.parse('https://api.github.com/repos/$repoOwner/$repoName/releases/latest');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        String latestTag = data['tag_name'];
+        if (latestTag.startsWith('v')) {
+          latestTag = latestTag.substring(1);
+        }
+
+        if (latestTag != currentVersion && _isNewer(currentVersion, latestTag)) {
+          // Trigger local notification
+          await NotificationService.showInstantNotification(
+            "Nueva Actualización",
+            "La versión v$latestTag está disponible. Ve a configuración para instalarla."
+          );
+        }
+      }
+    } catch (e) {
+      // Do nothing on silent fail
     }
   }
 

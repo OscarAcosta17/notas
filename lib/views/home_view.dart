@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../viewmodels/semestre_provider.dart';
+import '../models/semestre.dart';
 
 import 'semestre_detail_view.dart';
+import 'agenda_view.dart';
 import 'add_semestre_dialog.dart';
-import 'edit_semestre_dialog.dart';
 import 'settings_view.dart';
 
 class HomeView extends ConsumerStatefulWidget {
@@ -15,156 +17,287 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
-  final Set<int> _selectedIds = {};
+  int _currentTab = 0; // 0 = Semestres, 1 = Agenda
+  int? _selectedSemesterId;
+  bool _isLoading = true;
 
-  void _toggleSelection(int id) {
-    setState(() {
-      if (_selectedIds.contains(id)) {
-        _selectedIds.remove(id);
-      } else {
-        _selectedIds.add(id);
-      }
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadSelectedSemester();
   }
 
-  void _clearSelection() {
-    setState(() {
-      _selectedIds.clear();
-    });
-  }
-
-  void _deleteSelected() {
-    for (final id in _selectedIds) {
-      ref.read(semestreProvider.notifier).eliminarSemestre(id);
+  Future<void> _loadSelectedSemester() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedId = prefs.getInt('last_semester_id');
+    if (mounted) {
+      setState(() {
+        _selectedSemesterId = savedId;
+        _isLoading = false;
+      });
     }
-    _clearSelection();
   }
 
-  void _editSelected() {
-    if (_selectedIds.length != 1) return;
-    final id = _selectedIds.first;
-    final semestres = ref.read(semestreProvider);
-    final semestre = semestres.firstWhere((s) => s.id == id);
+  Future<void> _selectSemester(int id) async {
+    setState(() {
+      _selectedSemesterId = id;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_semester_id', id);
+  }
 
-    showDialog(
-      context: context,
-      builder: (context) => EditSemestreDialog(semestre: semestre),
-    ).then((_) => _clearSelection());
+  Widget _buildSemestersHeader(List<Semestre> semestres) {
+    if (semestres.isEmpty) return const SizedBox.shrink();
+    
+    // Ensure selected semester is valid
+    if (_selectedSemesterId == null || !semestres.any((s) => s.id == _selectedSemesterId)) {
+      _selectedSemesterId = semestres.last.id;
+      _selectSemester(_selectedSemesterId!); // Save it async
+    }
+
+    return Container(
+      height: 60,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: semestres.length,
+        itemBuilder: (context, index) {
+          final sem = semestres[index];
+          final isSelected = sem.id == _selectedSemesterId;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
+            child: ChoiceChip(
+              label: Text(
+                sem.nombre,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              selected: isSelected,
+              selectedColor: Theme.of(context).colorScheme.primary,
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? Colors.transparent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
+                ),
+              ),
+              onSelected: (val) {
+                if (val) _selectSemester(sem.id!);
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSemestersTab(List<Semestre> semestres) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    
+    if (semestres.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Mis Semestres', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsView())),
+            ),
+          ],
+        ),
+        body: const Center(child: Text('No hay semestres creados.', style: TextStyle(color: Colors.grey))),
+        floatingActionButton: FloatingActionButton(
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          elevation: 2,
+          child: const Icon(Icons.add),
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => const AddSemestreDialog(),
+            );
+          },
+        ),
+      );
+    }
+    
+    // Valid semester selected
+    final currentSemestre = semestres.firstWhere(
+      (s) => s.id == _selectedSemesterId, 
+      orElse: () => semestres.last
+    );
+
+    return SemestreDetailView(
+      semestre: currentSemestre,
+      showBackButton: false,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.add_box_outlined),
+          tooltip: 'Añadir Semestre',
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => const AddSemestreDialog(),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SettingsView()),
+            );
+          },
+        ),
+      ],
+      headerWidget: _buildSemestersHeader(semestres),
+    );
+  }
+
+  Widget _buildAgendaTab() {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Agenda de Evaluaciones', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsView()),
+              );
+            },
+          ),
+        ],
+      ),
+      body: const AgendaView(),
+    );
+  }
+
+  Widget _buildBottomBubble() {
+    return Positioned(
+      bottom: 24,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(40),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: Border.all(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+              width: 1,
+            )
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _BubbleItem(
+                icon: Icons.school,
+                label: 'Ramos',
+                isActive: _currentTab == 0,
+                onTap: () => setState(() => _currentTab = 0),
+              ),
+              const SizedBox(width: 8),
+              _BubbleItem(
+                icon: Icons.calendar_month,
+                label: 'Agenda',
+                isActive: _currentTab == 1,
+                onTap: () => setState(() => _currentTab = 1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final semestres = ref.watch(semestreProvider);
-    final isSelectionMode = _selectedIds.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: isSelectionMode
-          ? AppBar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              leading: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: _clearSelection,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              ),
-              title: Text(
-                '${_selectedIds.length} seleccionado(s)',
-                style: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
-              ),
-              actions: [
-                if (_selectedIds.length == 1)
-                  IconButton(
-                    icon: const Icon(Icons.edit),
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    onPressed: _editSelected,
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  onPressed: _deleteSelected,
-                ),
-              ],
-            )
-          : AppBar(
-              title: Text('Mis Semestres', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              elevation: 0,
-              iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const SettingsView()),
-                    );
-                  },
-                ),
-              ],
-            ),
-      body: semestres.isEmpty
-          ? const Center(child: Text('No hay semestres creados.', style: TextStyle(color: Colors.grey)))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: semestres.length,
-              itemBuilder: (context, index) {
-                final sem = semestres[index];
-                final isSelected = _selectedIds.contains(sem.id);
+      body: Stack(
+        children: [
+          // Main content
+          Positioned.fill(
+            child: _currentTab == 0 
+                ? _buildSemestersTab(semestres) 
+                : _buildAgendaTab(),
+          ),
+          
+          // Navigation Bubble
+          _buildBottomBubble(),
+        ],
+      ),
+    );
+  }
+}
 
-                return Card(
-                  color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5) : Theme.of(context).colorScheme.surface,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    title: Text(
-                      sem.nombre,
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
-                    ),
-                    trailing: isSelectionMode
-                        ? Icon(
-                            isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                            color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
-                          )
-                        : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                    onTap: () {
-                      if (isSelectionMode) {
-                        _toggleSelection(sem.id!);
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => SemestreDetailView(semestre: sem)),
-                        );
-                      }
-                    },
-                    onLongPress: () {
-                      _toggleSelection(sem.id!);
-                    },
-                  ),
-                );
-              },
+class _BubbleItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _BubbleItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: isActive ? Theme.of(context).colorScheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(30),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              color: isActive ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              size: 24,
             ),
-      floatingActionButton: isSelectionMode
-          ? null
-          : FloatingActionButton(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              elevation: 2,
-              child: const Icon(Icons.add),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => const AddSemestreDialog(),
-                );
-              },
-            ),
+            if (isActive) ...[
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ]
+          ],
+        ),
+      ),
     );
   }
 }
