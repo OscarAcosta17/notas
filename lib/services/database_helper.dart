@@ -5,7 +5,7 @@ import 'dart:io';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
-  static const _databaseVersion = 4; // Incremented for evaluations date schema
+  static const _databaseVersion = 5; // Incremented for horario_clases
 
   // Singleton
   DatabaseHelper._privateConstructor();
@@ -78,6 +78,19 @@ class DatabaseHelper {
         FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE horario_clases (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        semester_id INTEGER NOT NULL,
+        subject_name TEXT NOT NULL,
+        dia_semana INTEGER NOT NULL,
+        bloque INTEGER NOT NULL,
+        sala TEXT NOT NULL,
+        paralelo TEXT NOT NULL,
+        FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
+      )
+    ''');
   }
   
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -89,6 +102,31 @@ class DatabaseHelper {
       await _onCreate(db, newVersion);
     } else if (oldVersion == 3) {
       await db.execute('ALTER TABLE evaluations ADD COLUMN date TEXT');
+      await db.execute('''
+        CREATE TABLE horario_clases (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          semester_id INTEGER NOT NULL,
+          subject_name TEXT NOT NULL,
+          dia_semana INTEGER NOT NULL,
+          bloque INTEGER NOT NULL,
+          sala TEXT NOT NULL,
+          paralelo TEXT NOT NULL,
+          FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
+        )
+      ''');
+    } else if (oldVersion == 4) {
+      await db.execute('''
+        CREATE TABLE horario_clases (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          semester_id INTEGER NOT NULL,
+          subject_name TEXT NOT NULL,
+          dia_semana INTEGER NOT NULL,
+          bloque INTEGER NOT NULL,
+          sala TEXT NOT NULL,
+          paralelo TEXT NOT NULL,
+          FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
+        )
+      ''');
     }
   }
 
@@ -174,5 +212,26 @@ class DatabaseHelper {
   Future<int> updateEvaluation(Map<String, dynamic> row) async {
     Database db = await instance.database;
     return await db.update('evaluations', row, where: 'id = ?', whereArgs: [row['id']]);
+  }
+
+  // --- CRUD Horarios ---
+  Future<int> insertHorario(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    return await db.insert('horario_clases', row);
+  }
+
+  Future<List<Map<String, dynamic>>> queryHorariosBySemester(int semesterId) async {
+    Database db = await instance.database;
+    return await db.query('horario_clases', where: 'semester_id = ?', whereArgs: [semesterId]);
+  }
+
+  Future<int> deleteHorario(int id) async {
+    Database db = await instance.database;
+    return await db.delete('horario_clases', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> updateHorario(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    return await db.update('horario_clases', row, where: 'id = ?', whereArgs: [row['id']]);
   }
 }

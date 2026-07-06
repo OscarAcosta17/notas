@@ -6,6 +6,7 @@ import '../models/semestre.dart';
 
 import 'semestre_detail_view.dart';
 import 'agenda_view.dart';
+import 'horario_view.dart';
 import 'add_semestre_dialog.dart';
 import 'settings_view.dart';
 
@@ -182,6 +183,20 @@ class _HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
+  Widget _buildHorarioTab() {
+    if (_selectedSemesterId == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text('Horario de Clases', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          elevation: 0,
+        ),
+        body: const Center(child: Text('Selecciona un semestre en la pestaña de Ramos primero.', style: TextStyle(color: Colors.grey))),
+      );
+    }
+    return HorarioView(semesterId: _selectedSemesterId!);
+  }
+
   Widget _buildBottomBubble() {
     return Positioned(
       bottom: 24,
@@ -216,7 +231,14 @@ class _HomeViewState extends ConsumerState<HomeView> {
               ),
               const SizedBox(width: 8),
               _BubbleItem(
-                icon: Icons.calendar_month,
+                icon: Icons.calendar_today,
+                label: 'Horario',
+                isActive: _currentTab == 2,
+                onTap: () => setState(() => _currentTab = 2),
+              ),
+              const SizedBox(width: 8),
+              _BubbleItem(
+                icon: Icons.event_note,
                 label: 'Agenda',
                 isActive: _currentTab == 1,
                 onTap: () => setState(() => _currentTab = 1),
@@ -240,7 +262,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
           Positioned.fill(
             child: _currentTab == 0 
                 ? _buildSemestersTab(semestres) 
-                : _buildAgendaTab(),
+                : _currentTab == 1 ? _buildAgendaTab() : _buildHorarioTab(),
           ),
           
           // Navigation Bubble

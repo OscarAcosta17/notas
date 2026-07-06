@@ -7,6 +7,20 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 ## 📥 Descargar APK (Versiones)
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
+### [v1.0.4] - Horario de Clases y Notificaciones
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.4.apk](./releases/notas-v1.0.4.apk)
+
+**Novedades y Características:**
+- **Horario de Clases**: Nueva pestaña para visualizar tu horario universitario distribuido en bloques y por día de la semana.
+- **Notificaciones 15 min antes**: Agrega tus clases a los bloques y recibe un aviso inteligente antes de que empiecen.
+- **Mejoras en la Agenda**: Las evaluaciones en la agenda ahora están ordenadas mes a mes.
+- **Alertas de Pruebas**: Nuevos recordatorios automáticos 24 horas y 12 horas antes de cada certamen.
+- **Gestión de Permisos**: Nuevo menú en Configuración para activar/desactivar notificaciones fácilmente.
+
+---
+
 ### [v1.0.3] - Agenda y Rediseño de Navegación
 **Fecha**: Julio 2026
 

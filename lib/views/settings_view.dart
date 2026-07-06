@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_dynamic_icon_plus/flutter_dynamic_icon_plus.dart';
 import '../viewmodels/settings_provider.dart';
 import '../services/updater_service.dart';
+import '../services/notification_service.dart';
 
 class SettingsView extends ConsumerStatefulWidget {
   const SettingsView({super.key});
@@ -112,6 +113,20 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                     UpdaterService.checkForUpdates(context);
                   },
                 ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.notifications_active),
+                  title: const Text('Permisos de Notificación'),
+                  subtitle: const Text('Otorgar permisos para recibir alertas (Horario y Agenda)'),
+                  onTap: () async {
+                    bool granted = await NotificationService.requestPermissions();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(granted ? 'Permisos otorgados' : 'Permisos denegados')),
+                      );
+                    }
+                  },
+                ),
               ],
             ),
           ),
@@ -119,7 +134,7 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
             padding: const EdgeInsets.all(16.0),
             child: Text(
               'Versión actual: $_version',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
             ),
           ),
         ],

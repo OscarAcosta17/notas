@@ -76,6 +76,11 @@ class _AgendaViewState extends State<AgendaView> {
     return '$dayStr ${dt.day} $monthStr • $hour:$minute';
   }
 
+  String _getMonthName(int month) {
+    final months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    return months[month - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -91,66 +96,99 @@ class _AgendaViewState extends State<AgendaView> {
       );
     }
 
+    // Group by Month/Year
+    Map<String, List<Map<String, dynamic>>> grouped = {};
+    for (var data in _evaluations) {
+      final eval = data['eval'] as Evaluacion;
+      final key = '${_getMonthName(eval.fecha!.month)} ${eval.fecha!.year}';
+      if (!grouped.containsKey(key)) {
+        grouped[key] = [];
+      }
+      grouped[key]!.add(data);
+    }
+
+    final keys = grouped.keys.toList();
+
     return ListView.builder(
       padding: const EdgeInsets.all(16).copyWith(bottom: 100),
-      itemCount: _evaluations.length,
-      itemBuilder: (context, index) {
-        final data = _evaluations[index];
-        final eval = data['eval'] as Evaluacion;
-        final subjectName = data['subjectName'] as String;
-        
-        final isPast = eval.fecha!.isBefore(DateTime.now());
+      itemCount: keys.length,
+      itemBuilder: (context, sectionIndex) {
+        final monthKey = keys[sectionIndex];
+        final items = grouped[monthKey]!;
 
-        return Card(
-          elevation: 0,
-          color: Theme.of(context).colorScheme.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(
-              color: isPast 
-                  ? Colors.red.withValues(alpha: 0.3)
-                  : Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-              width: 1,
-            ),
-          ),
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            leading: Icon(
-              Icons.event,
-              color: isPast ? Colors.red : Theme.of(context).colorScheme.primary,
-            ),
-            title: Text(
-              eval.nombre,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Theme.of(context).colorScheme.onSurface,
-                decoration: isPast ? TextDecoration.lineThrough : null,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 12, left: 4),
+              child: Text(
+                monthKey,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(
-                  subjectName,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                    fontWeight: FontWeight.w500,
+            ...items.map((data) {
+              final eval = data['eval'] as Evaluacion;
+              final subjectName = data['subjectName'] as String;
+              final isPast = eval.fecha!.isBefore(DateTime.now());
+
+              return Card(
+                elevation: 0,
+                color: Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: BorderSide(
+                    color: isPast 
+                        ? Colors.red.withValues(alpha: 0.3)
+                        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                    width: 1,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDateTime(eval.fecha!),
-                  style: TextStyle(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  leading: Icon(
+                    Icons.event,
                     color: isPast ? Colors.red : Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600,
+                  ),
+                  title: Text(
+                    eval.nombre,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Theme.of(context).colorScheme.onSurface,
+                      decoration: isPast ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text(
+                        subjectName,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDateTime(eval.fecha!),
+                        style: TextStyle(
+                          color: isPast ? Colors.red : Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
+              );
+            }),
+            const SizedBox(height: 16),
+          ],
         );
       },
     );
