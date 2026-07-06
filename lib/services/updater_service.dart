@@ -157,11 +157,13 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/update_v${widget.version}.apk');
 
-      List<int> bytes = [];
+      final sink = file.openWrite();
+      int downloaded = 0;
+
       response.stream.listen(
         (List<int> newBytes) {
-          bytes.addAll(newBytes);
-          final downloaded = bytes.length;
+          sink.add(newBytes);
+          downloaded += newBytes.length;
           if (contentLength > 0) {
             setState(() {
               _progress = downloaded / contentLength;
@@ -169,14 +171,16 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           }
         },
         onDone: () async {
-          await file.writeAsBytes(bytes);
+          await sink.flush();
+          await sink.close();
           setState(() {
              _status = 'Descarga completa. Abriendo instalador...';
           });
           OpenFilex.open(file.path);
           if (mounted) Navigator.pop(context);
         },
-        onError: (e) {
+        onError: (e) async {
+          await sink.close();
           setState(() {
             _status = 'Error en la descarga.';
             _isDownloading = false;
