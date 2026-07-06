@@ -12,7 +12,7 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 ### [v1.0.8] - Reorganización y Copias de Seguridad
 **Fecha**: Julio 2026
 
-**📦 Enlace de Descarga:** [NotasApp-v1.0.8.apk](./releases/notas-v1.0.8.apk)
+**📦 Enlace de Descarga:** [NotasApp-v1.0.8.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.0.8/notas-v1.0.8.apk)
 
 **Novedades y Características:**
 - **Copias de Seguridad**: ¡Tus datos ahora están más seguros! Puedes Exportar e Importar todo el estado de tu aplicación (ramos, evaluaciones, horarios) con un solo botón en Configuración.
