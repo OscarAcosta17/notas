@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/clase_horario.dart';
 import '../services/database_helper.dart';
 import '../services/notification_service.dart';
+import '../services/widget_service.dart';
 
 class HorarioView extends StatefulWidget {
   final int semesterId;
@@ -24,6 +25,7 @@ class _HorarioViewState extends State<HorarioView> {
   void initState() {
     super.initState();
     _loadHorario();
+    NotificationService.requestPermissions();
   }
   
   @override
@@ -86,12 +88,14 @@ class _HorarioViewState extends State<HorarioView> {
     if (_notificationsEnabled) {
       await NotificationService.scheduleClassReminder(nueva);
     }
+    WidgetService.updateHorarioWidget();
     _loadHorario();
   }
 
   Future<void> _deleteClase(ClaseHorario clase) async {
     await DatabaseHelper.instance.deleteHorario(clase.id!);
     await NotificationService.cancelClassReminder(clase.id!);
+    WidgetService.updateHorarioWidget();
     _loadHorario();
   }
 

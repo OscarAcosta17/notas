@@ -4,10 +4,13 @@ import 'views/home_view.dart';
 import 'viewmodels/settings_provider.dart';
 import 'services/updater_service.dart';
 import 'services/notification_service.dart';
+import 'services/widget_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.initialize();
+  WidgetService.updateAgendaWidget();
+  WidgetService.updateHorarioWidget();
   UpdaterService.checkForUpdatesSilently();
   runApp(const ProviderScope(child: NotasApp()));
 }

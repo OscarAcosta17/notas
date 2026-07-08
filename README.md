@@ -9,6 +9,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
 
+### [v1.0.9] - Widgets de Inicio y Horarios Personalizables
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.0.9.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.0.9/notas-v1.0.9.apk)
+
+**Novedades y Características:**
+- **Nuevos Widgets de Inicio**: Añade a tu pantalla de inicio el widget de **Horario** para ver tus clases de hoy, o el widget de **Agenda** para mantener a la vista tus próximas evaluaciones.
+- **Recordatorios Personalizables**: Ahora puedes configurar desde los Ajustes con cuánta anticipación deseas recibir la alerta de una clase (ej: 5, 15, 30 min) y de una prueba (ej: 12, 24 horas).
+- **Alertas Inmediatas**: Si programas o agregas una clase que se encuentra actualmente en curso, recibirás la notificación de inmediato para que no se te pase por alto.
+- **Mejoras de Estabilidad**: Optimizaciones en la programación de notificaciones locales (`flutter_local_notifications`).
+
+---
 ### [v1.0.8] - Reorganización y Copias de Seguridad
 **Fecha**: Julio 2026
 

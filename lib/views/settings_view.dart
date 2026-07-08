@@ -147,6 +147,70 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                 const Divider(),
                 const Padding(
                   padding: EdgeInsets.all(16.0),
+                  child: Text('Notificaciones y Alertas', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                ListTile(
+                  title: const Text('Recordatorio de Clases'),
+                  subtitle: const Text('Minutos antes de cada bloque del horario'),
+                  trailing: DropdownButton<int>(
+                    value: settings.minutosAntesClase,
+                    items: <int>[5, 10, 15, 30, 60].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value min'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        ref.read(settingsProvider.notifier).setMinutosAntesClase(newValue);
+                        // Idealmente re-programar notificaciones aquí
+                      }
+                    },
+                  ),
+                ),
+                ListTile(
+                  title: const Text('Recordatorio de Evaluaciones'),
+                  subtitle: const Text('Horas antes de una prueba o certamen'),
+                  trailing: DropdownButton<int>(
+                    value: settings.horasAntesEvaluacion,
+                    items: <int>[1, 2, 12, 24, 48].map((int value) {
+                      return DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value hrs'),
+                      );
+                    }).toList(),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        ref.read(settingsProvider.notifier).setHorasAntesEvaluacion(newValue);
+                        // Idealmente re-programar notificaciones aquí
+                      }
+                    },
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.notifications_active),
+                  title: const Text('Permisos de Notificación'),
+                  subtitle: const Text('Otorgar permisos para recibir alertas'),
+                  onTap: () async {
+                    bool granted = await NotificationService.requestPermissions();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(granted ? 'Permisos otorgados' : 'Permisos denegados')),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.bug_report),
+                  title: const Text('Probar Notificaciones'),
+                  subtitle: const Text('Lanzar una notificación de prueba ahora'),
+                  onTap: () {
+                    NotificationService.showInstantNotification('Prueba', '¡Las notificaciones funcionan correctamente!');
+                  },
+                ),
+                const Divider(),
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
                   child: Text('Datos', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 ListTile(
@@ -171,28 +235,6 @@ class _SettingsViewState extends ConsumerState<SettingsView> {
                       context,
                       MaterialPageRoute(builder: (context) => const AppInfoView()),
                     );
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.notifications_active),
-                  title: const Text('Permisos de Notificación'),
-                  subtitle: const Text('Otorgar permisos para recibir alertas (Horario y Agenda)'),
-                  onTap: () async {
-                    bool granted = await NotificationService.requestPermissions();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(granted ? 'Permisos otorgados' : 'Permisos denegados')),
-                      );
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.bug_report),
-                  title: const Text('Probar Notificaciones'),
-                  subtitle: const Text('Lanzar una notificación de prueba ahora'),
-                  onTap: () {
-                    NotificationService.showInstantNotification('Prueba', '¡Las notificaciones funcionan correctamente!');
                   },
                 ),
               ],

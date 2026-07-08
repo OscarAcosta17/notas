@@ -29,13 +29,13 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.0.8)'),
+        title: const Text('Novedades (v1.0.9)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• Limpieza visual de la pestaña Configuración.\n'
-            '• Agrupación de información de la app en la sección "Acerca de Notas".\n'
-            '• Nueva función de Copia de Seguridad: Ahora puedes exportar e importar tus ramos, evaluaciones y horarios para que no se pierdan.\n'
-            '• Verificación funcional del sistema de actualizaciones OTA.',
+            '• Notificaciones de clases y evaluaciones configurables desde Ajustes.\n'
+            '• Alertas inmediatas al añadir una clase o evaluación en curso.\n'
+            '• Nuevos Widgets de inicio: Consulta tu horario y próximas evaluaciones directamente desde la pantalla de inicio de tu teléfono.\n'
+            '• Mejoras de estabilidad general y solución de errores en notificaciones locales.',
           ),
         ),
         actions: [

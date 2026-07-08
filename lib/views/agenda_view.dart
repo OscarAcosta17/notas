@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/evaluacion.dart';
 import '../services/database_helper.dart';
 import '../services/notification_service.dart';
+import '../services/widget_service.dart';
 
 class AgendaView extends StatefulWidget {
   const AgendaView({super.key});
@@ -18,6 +19,7 @@ class _AgendaViewState extends State<AgendaView> {
   void initState() {
     super.initState();
     _loadAgenda();
+    NotificationService.requestPermissions();
   }
 
   Future<void> _loadAgenda() async {
@@ -106,6 +108,7 @@ class _AgendaViewState extends State<AgendaView> {
                   eval.fecha = null; // Removing date removes it from agenda, keeping the evaluation itself
                   await DatabaseHelper.instance.updateEvaluation(eval.toMap());
                   await NotificationService.cancelEvaluationReminder(eval.id!);
+                  WidgetService.updateAgendaWidget();
                   _loadAgenda();
                 },
               ),
@@ -195,6 +198,7 @@ class _AgendaViewState extends State<AgendaView> {
                         await NotificationService.scheduleEvaluationReminder(eval, subjectName);
                       }
                       
+                      WidgetService.updateAgendaWidget();
                       _loadAgenda();
                       if (context.mounted) Navigator.pop(context);
                     }

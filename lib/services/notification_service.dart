@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/evaluacion.dart';
 import '../models/clase_horario.dart';
 
@@ -43,26 +44,24 @@ class NotificationService {
   static Future<void> scheduleEvaluationReminder(Evaluacion ev, String ramoNombre) async {
     if (ev.fecha == null || ev.id == null) return;
     
-    // 24 horas antes
-    final scheduleTime24 = ev.fecha!.subtract(const Duration(hours: 24));
-    if (scheduleTime24.isAfter(DateTime.now())) {
+    final prefs = await SharedPreferences.getInstance();
+    final horasAntes = prefs.getInt('horasAntesEvaluacion') ?? 24;
+
+    // Configured reminder
+    final scheduleTime = ev.fecha!.subtract(Duration(hours: horasAntes));
+    if (scheduleTime.isAfter(DateTime.now())) {
       await _scheduleSpecific(
         id: (ev.id! * 100) + 1, // Unique ID derived from eval ID
-        title: 'Próxima Evaluación (Mañana)',
+        title: 'Próxima Evaluación ($horasAntes hrs)',
         body: 'Tienes una evaluación de $ramoNombre: ${ev.nombre}',
-        scheduledDate: tz.TZDateTime.from(scheduleTime24, tz.local),
+        scheduledDate: tz.TZDateTime.from(scheduleTime, tz.local),
       );
-    }
-
-    // 12 horas antes
-    final scheduleTime12 = ev.fecha!.subtract(const Duration(hours: 12));
-    if (scheduleTime12.isAfter(DateTime.now())) {
-      await _scheduleSpecific(
-        id: (ev.id! * 100) + 2,
-        title: 'Próxima Evaluación (12 hrs)',
-        body: 'Tienes una evaluación de $ramoNombre: ${ev.nombre}',
-        scheduledDate: tz.TZDateTime.from(scheduleTime12, tz.local),
-      );
+    } else {
+      // Si ya pasó el tiempo de aviso, revisar si la evaluación es en el futuro cercano (e.g. hoy)
+      // Si la evaluación es hoy, y no ha pasado, avisar de inmediato
+      if (ev.fecha!.isAfter(DateTime.now())) {
+         await showInstantNotification('Próxima Evaluación', 'Tienes una evaluación inminente de $ramoNombre: ${ev.nombre}');
+      }
     }
   }
 
@@ -113,28 +112,27 @@ class NotificationService {
     };
 
     final time = blockTimes[clase.bloque] ?? [8, 0];
-    // 15 minutos antes
+    
+    final prefs = await SharedPreferences.getInstance();
+    final minutosAntes = prefs.getInt('minutosAntesClase') ?? 15;
+
+    // Calcular hora de notificación
     int hour = time[0];
-    int minute = time[1] - 15;
-    if (minute < 0) {
+    int minute = time[1] - minutosAntes;
+    while (minute < 0) {
       hour -= 1;
       minute += 60;
     }
+    if (hour < 0) hour = 0; // Prevent invalid hours
 
     // Find the next occurrence of this day of the week
     tz.TZDateTime now = tz.TZDateTime.now(tz.local);
     tz.TZDateTime scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
     
-    // Si la clase es hoy y la hora de notificación (15 min antes) ya pasó O está pasando ahora,
-    // flutter_local_notifications podría fallar si intentamos agendar en el pasado.
-    // Si ya pasó la hora de notificación de hoy, que avise la próxima semana.
     if (scheduledDate.weekday == clase.diaSemana && scheduledDate.isBefore(now)) {
-       // Revisa si la clase en sí (hora original) todavía no termina, pero mejor simplemente lo mandamos a la otra semana
-       // para el recordatorio semanal, y lanzamos una notificación "Instantánea" para avisarle ahora mismo
-       // si está dentro del bloque.
-       // Bloque dura 1h 10m (70 mins). hora original de inicio:
-       final originalStart = scheduledDate.add(const Duration(minutes: 15));
-       final blockEnd = originalStart.add(const Duration(minutes: 70));
+       // Revisa si la clase en sí (hora original) todavía no termina
+       final originalStart = scheduledDate.add(Duration(minutes: minutosAntes));
+       final blockEnd = originalStart.add(const Duration(minutes: 70)); // Bloque dura 1h 10m
        
        if (now.isBefore(blockEnd)) {
          // La clase está por empezar o en curso hoy mismo! Lanzar alerta inmediata.
@@ -159,7 +157,7 @@ class NotificationService {
 
     await _notificationsPlugin.zonedSchedule(
       id: (clase.id! * 1000) + 3, // Unique ID for class
-      title: 'Clase en 15 minutos',
+      title: 'Clase en $minutosAntes minutos',
       body: '${clase.subjectName} en sala ${clase.sala}',
       scheduledDate: scheduledDate,
       notificationDetails: platformChannelSpecifics,
