@@ -29,13 +29,14 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.0.9)'),
+        title: const Text('Novedades (v1.1.0)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• Notificaciones de clases y evaluaciones configurables desde Ajustes.\n'
-            '• Alertas inmediatas al añadir una clase o evaluación en curso.\n'
-            '• Nuevos Widgets de inicio: Consulta tu horario y próximas evaluaciones directamente desde la pantalla de inicio de tu teléfono.\n'
-            '• Mejoras de estabilidad general y solución de errores en notificaciones locales.',
+            '• Sonidos Dinámicos: 10 nuevos sonidos de notificación para diferenciar Clases de Evaluaciones.\n'
+            '• Configuración Separada: La pestaña de ajustes ahora se divide en Apariencia, Notificaciones y Datos para mayor comodidad.\n'
+            '• Copias de Seguridad: Exporta e Importa fácilmente tu progreso desde Configuración.\n'
+            '• Widgets de Inicio Nativos: Agrega tu Horario estilo calendario o tu Agenda interactiva a la pantalla de tu móvil.\n'
+            '• Y múltiples mejoras de estabilidad y rendimiento general.',
           ),
         ),
         actions: [

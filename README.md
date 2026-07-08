@@ -8,10 +8,10 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
-### [v1.0.10] - Widgets Nativos y Sonidos
+### [v1.1.0] - Widgets Nativos y Sonidos
 **Fecha**: Julio 2026
 
-**📦 Enlace de Descarga:** [NotasApp-v1.0.10.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.0.10/notas-v1.0.10.apk)
+**📦 Enlace de Descarga:** [NotasApp-v1.1.0.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.0/notas-v1.1.0.apk)
 
 **Novedades y Características:**
 - **Reorganización de Ajustes**: La configuración ahora está separada en secciones lógicas (Apariencia, Notificaciones, Datos) para mayor limpieza.
