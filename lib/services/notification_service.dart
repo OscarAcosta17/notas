@@ -54,7 +54,7 @@ class NotificationService {
     final details = NotificationDetails(android: androidDetails);
     
     await _notificationsPlugin.show(
-      id: 9998,
+      id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
       title: title,
       body: body,
       notificationDetails: details,

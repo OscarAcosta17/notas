@@ -3,7 +3,7 @@ import '../models/clase_horario.dart';
 import '../services/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
-
+import '../services/ics_export_service.dart';
 class HorarioView extends StatefulWidget {
   final int semesterId;
   const HorarioView({super.key, required this.semesterId});
@@ -227,6 +227,31 @@ class _HorarioViewState extends State<HorarioView> {
     }
   }
 
+  Future<void> _exportHorario() async {
+    if (_clases.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay clases para exportar.')),
+      );
+      return;
+    }
+
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      initialDateRange: DateTimeRange(
+        start: DateTime.now(),
+        end: DateTime.now().add(const Duration(days: 120)), // Default 4 months (typical semester)
+      ),
+      helpText: 'Selecciona la duración del semestre',
+      saveText: 'Exportar',
+    );
+
+    if (picked != null) {
+      await IcsExportService.exportHorario(_clases, picked.start, picked.end);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
@@ -240,6 +265,11 @@ class _HorarioViewState extends State<HorarioView> {
           backgroundColor: Theme.of(context).colorScheme.surface,
           elevation: 0,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.file_upload_outlined),
+              tooltip: 'Exportar Horario',
+              onPressed: _exportHorario,
+            ),
             IconButton(
               icon: Icon(_notificationsEnabled ? Icons.notifications_active : Icons.notifications_off),
               color: _notificationsEnabled ? Theme.of(context).colorScheme.primary : Colors.grey,

@@ -165,25 +165,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
   }
 
   Widget _buildAgendaTab() {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Agenda de Evaluaciones', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsView()),
-              );
-            },
-          ),
-        ],
-      ),
-      body: const AgendaView(),
-    );
+    return const AgendaView();
   }
 
   Widget _buildHorarioTab() {

@@ -3,7 +3,8 @@ import '../models/evaluacion.dart';
 import '../services/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
-
+import '../services/ics_export_service.dart';
+import 'settings_view.dart';
 class AgendaView extends StatefulWidget {
   const AgendaView({super.key});
 
@@ -213,35 +214,51 @@ class _AgendaViewState extends State<AgendaView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+  Future<void> _exportAgenda() async {
+    if (_evaluations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay evaluaciones para exportar.')),
+      );
+      return;
     }
 
-    if (_evaluations.isEmpty) {
-      return const Center(
+    final evs = _evaluations.map((e) => e['eval'] as Evaluacion).toList();
+    final namesMap = <int, String>{};
+    for (var e in _evaluations) {
+      final eval = e['eval'] as Evaluacion;
+      namesMap[eval.idCategoria] = e['subjectName'] as String;
+    }
+
+    await IcsExportService.exportAgenda(evs, namesMap);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget content;
+    if (_isLoading) {
+      content = const Center(child: CircularProgressIndicator());
+    } else if (_evaluations.isEmpty) {
+      content = const Center(
         child: Text(
           'No hay evaluaciones con fechas programadas.',
           style: TextStyle(color: Colors.grey, fontSize: 16),
         ),
       );
-    }
-
-    // Group by Month/Year
-    Map<String, List<Map<String, dynamic>>> grouped = {};
-    for (var data in _evaluations) {
-      final eval = data['eval'] as Evaluacion;
-      final key = '${_getMonthName(eval.fecha!.month)} ${eval.fecha!.year}';
-      if (!grouped.containsKey(key)) {
-        grouped[key] = [];
+    } else {
+      // Group by Month/Year
+      Map<String, List<Map<String, dynamic>>> grouped = {};
+      for (var data in _evaluations) {
+        final eval = data['eval'] as Evaluacion;
+        final key = '${_getMonthName(eval.fecha!.month)} ${eval.fecha!.year}';
+        if (!grouped.containsKey(key)) {
+          grouped[key] = [];
+        }
+        grouped[key]!.add(data);
       }
-      grouped[key]!.add(data);
-    }
 
-    final keys = grouped.keys.toList();
+      final keys = grouped.keys.toList();
 
-    return ListView.builder(
+      content = ListView.builder(
       padding: const EdgeInsets.all(16).copyWith(bottom: 100),
       itemCount: keys.length,
       itemBuilder: (context, sectionIndex) {
@@ -316,7 +333,7 @@ class _AgendaViewState extends State<AgendaView> {
                       ),
                     ],
                   ),
-                  onLongPress: () => _showActionDialog(eval, subjectName),
+                onLongPress: () => _showActionDialog(eval, subjectName),
                 ),
               );
             }),
@@ -324,6 +341,32 @@ class _AgendaViewState extends State<AgendaView> {
           ],
         );
       },
+    );
+    } // End of else
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Agenda de Evaluaciones', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: 'Exportar Agenda',
+            onPressed: _exportAgenda,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsView()),
+              );
+            },
+          ),
+        ],
+      ),
+      body: content,
     );
   }
 }
