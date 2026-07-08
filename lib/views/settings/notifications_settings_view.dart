@@ -14,6 +14,7 @@ class NotificationsSettingsView extends ConsumerStatefulWidget {
 
 class _NotificationsSettingsViewState extends ConsumerState<NotificationsSettingsView> {
   List<String> _availableSounds = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -25,7 +26,8 @@ class _NotificationsSettingsViewState extends ConsumerState<NotificationsSetting
     final sounds = await SoundService.getAvailableSounds();
     if (mounted) {
       setState(() {
-        _availableSounds = sounds;
+        _availableSounds = sounds.isNotEmpty ? sounds : ['clase_sound', 'eval_sound']; // Fallback in case list is completely empty
+        _isLoading = false;
       });
     }
   }
@@ -85,7 +87,7 @@ class _NotificationsSettingsViewState extends ConsumerState<NotificationsSetting
             padding: EdgeInsets.all(16.0),
             child: Text('Sonidos (Requiere reiniciar)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
-          if (_availableSounds.isEmpty)
+          if (_isLoading)
             const Center(child: CircularProgressIndicator())
           else ...[
             ListTile(
