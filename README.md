@@ -8,6 +8,16 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.1] - Exportación ICS y Corrección de Sonidos
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.1.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.1/NotasApp-v1.1.1.apk)
+
+**Novedades y Características:**
+- **Exportación a Calendario**: Ahora puedes exportar tus clases y evaluaciones en formato `.ics` para integrarlos en Google Calendar, Outlook, Apple Calendar, etc.
+- **Correcciones**: Resuelto el bug donde el botón de "Reproducir" sonido de notificación en la configuración no funcionaba tras cambiar de tono.
+
+---
 ### [v1.1.0] - Widgets Nativos y Sonidos
 **Fecha**: Julio 2026
 
