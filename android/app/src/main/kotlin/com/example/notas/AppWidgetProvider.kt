@@ -1,25 +1,36 @@
 package com.example.notas
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.SharedPreferences
+import android.content.Intent
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetProvider
+import android.net.Uri
 
-class AppWidgetProvider : HomeWidgetProvider() {
-    override fun onUpdate(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetIds: IntArray,
-        widgetData: SharedPreferences
-    ) {
+class AppWidgetProvider : AppWidgetProvider() {
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         for (appWidgetId in appWidgetIds) {
-            val views = RemoteViews(context.packageName, R.layout.widget_layout)
+            val intent = Intent(context, AgendaWidgetService::class.java)
+            intent.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            intent.data = Uri.parse(intent.toUri(Intent.URI_INTENT_SCHEME))
 
-            val evaluations = widgetData.getString("evaluations", "No hay evaluaciones próximas.")
-            views.setTextViewText(R.id.widget_text, evaluations)
+            val views = RemoteViews(context.packageName, R.layout.widget_agenda)
+            views.setRemoteAdapter(R.id.widget_list, intent)
+            views.setEmptyView(R.id.widget_list, R.id.widget_title)
+
+            // Intent para abrir la app
+            val appIntent = Intent(context, MainActivity::class.java)
+            val pendingIntent = PendingIntent.getActivity(
+                context, 0, appIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setPendingIntentTemplate(R.id.widget_list, pendingIntent)
+            views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list)
         }
     }
 }

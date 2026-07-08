@@ -239,4 +239,43 @@ class DatabaseHelper {
     Database db = await instance.database;
     return await db.update('horario_clases', row, where: 'id = ?', whereArgs: [row['id']]);
   }
+
+  // --- Backup and Restore ---
+  Future<String> exportDatabase() async {
+    final dbPath = await getDatabasePath();
+    final dbFile = File(dbPath);
+    if (!await dbFile.exists()) {
+      throw Exception("No hay base de datos para exportar.");
+    }
+    
+    // Guardar en la carpeta de documentos de la aplicación, simulando Descargas por simplicidad de permisos.
+    // En una app real de Android 11+ se usaría SAF o un directorio público de Descargas, pero requeriría más permisos.
+    Directory docs = await getApplicationDocumentsDirectory();
+    final backupPath = join(docs.path, 'NotasDB_backup.db');
+    
+    await dbFile.copy(backupPath);
+    return backupPath;
+  }
+
+  Future<void> importDatabase() async {
+    Directory docs = await getApplicationDocumentsDirectory();
+    final backupPath = join(docs.path, 'NotasDB_backup.db');
+    final backupFile = File(backupPath);
+    
+    if (!await backupFile.exists()) {
+      throw Exception("No se encontró copia de seguridad.");
+    }
+    
+    // Cerrar BD actual
+    if (_database != null && _database!.isOpen) {
+      await _database!.close();
+      _database = null;
+    }
+    
+    final dbPath = await getDatabasePath();
+    await backupFile.copy(dbPath);
+    
+    // Reabrir
+    await database; 
+  }
 }

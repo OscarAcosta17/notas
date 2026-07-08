@@ -38,17 +38,19 @@ class WidgetService {
       });
       
       String text = "";
+      List<String> items = [];
       if (upcoming.isEmpty) {
-        text = "No hay evaluaciones próximas.";
+        // empty list handled by factory
       } else {
-        for (int i = 0; i < upcoming.length && i < 3; i++) { // show top 3
+        for (int i = 0; i < upcoming.length && i < 10; i++) { // show top 10
           final eval = upcoming[i]['eval'] as Evaluacion;
           final subject = upcoming[i]['subjectName'] as String;
-          text += "• ${eval.nombre} ($subject)\n  ${eval.fecha!.day}/${eval.fecha!.month} ${eval.fecha!.hour.toString().padLeft(2,'0')}:${eval.fecha!.minute.toString().padLeft(2,'0')}\n";
+          final dayStr = "${eval.fecha!.day}/${eval.fecha!.month} ${eval.fecha!.hour.toString().padLeft(2,'0')}:${eval.fecha!.minute.toString().padLeft(2,'0')}";
+          items.add("${eval.nombre} ($subject)###$dayStr");
         }
       }
       
-      await HomeWidget.saveWidgetData<String>('evaluations', text.trim());
+      await HomeWidget.saveWidgetData<String>('evaluations_list', items.join("|||"));
       await HomeWidget.updateWidget(name: 'AppWidgetProvider');
 
     } catch (e) {
@@ -68,22 +70,22 @@ class WidgetService {
       final maps = await db.queryHorariosBySemester(semId);
       final clases = maps.map((e) => ClaseHorario.fromMap(e)).toList();
       
-      // Get today's classes
-      final today = DateTime.now().weekday; // 1 = Monday, 5 = Friday
-      final clasesDia = clases.where((c) => c.diaSemana == today).toList();
-      clasesDia.sort((a, b) => a.bloque.compareTo(b.bloque));
-      
-      String text = "";
-      if (clasesDia.isEmpty) {
-        text = "No hay clases programadas para hoy.";
-      } else {
-        for (int i = 0; i < clasesDia.length; i++) {
-          final c = clasesDia[i];
-          text += "• ${c.subjectName}\n  Bloque ${c.bloque} | Sala: ${c.sala}\n";
+      final weekDays = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+      List<String> items = [];
+
+      for (int d = 1; d <= 5; d++) {
+        final clasesDia = clases.where((c) => c.diaSemana == d).toList();
+        clasesDia.sort((a, b) => a.bloque.compareTo(b.bloque));
+
+        if (clasesDia.isEmpty) {
+          items.add("${weekDays[d-1]}###Ningún evento");
+        } else {
+          String content = clasesDia.map((c) => "Bloque ${c.bloque} - ${c.subjectName} (Sala: ${c.sala})").join("\n");
+          items.add("${weekDays[d-1]}###$content");
         }
       }
 
-      await HomeWidget.saveWidgetData<String>('horario_text', text.trim());
+      await HomeWidget.saveWidgetData<String>('horario_list', items.join("|||"));
       await HomeWidget.updateWidget(name: 'HorarioWidgetProvider');
 
     } catch (e) {

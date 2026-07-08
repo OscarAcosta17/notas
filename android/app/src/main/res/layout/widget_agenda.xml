@@ -11,7 +11,7 @@
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Horario"
+        android:text="Próximas Evaluaciones"
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="#FFFFFF"
@@ -21,6 +21,6 @@
         android:id="@+id/widget_list"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:divider="@null"
-        android:dividerHeight="0dp" />
+        android:divider="#444444"
+        android:dividerHeight="1dp" />
 </LinearLayout>

@@ -1,244 +1,60 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dynamic_icon_plus/flutter_dynamic_icon_plus.dart';
-import '../viewmodels/settings_provider.dart';
-import '../services/notification_service.dart';
-import '../services/database_helper.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:io';
 import 'app_info_view.dart';
+import 'settings/appearance_settings_view.dart';
+import 'settings/notifications_settings_view.dart';
+import 'settings/data_settings_view.dart';
 
-class SettingsView extends ConsumerStatefulWidget {
+class SettingsView extends ConsumerWidget {
   const SettingsView({super.key});
 
   @override
-  ConsumerState<SettingsView> createState() => _SettingsViewState();
-}
-
-class _SettingsViewState extends ConsumerState<SettingsView> {
-  Future<void> _exportDatabase() async {
-    try {
-      final dbPath = await DatabaseHelper.instance.getDatabasePath();
-      // ignore: deprecated_member_use
-      await Share.shareXFiles([XFile(dbPath)], text: 'Copia de seguridad de NotasApp (NotasDB.db)');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al exportar: $e')));
-      }
-    }
-  }
-
-  Future<void> _importDatabase() async {
-    try {
-      FilePickerResult? result = await FilePicker.pickFiles(
-        type: FileType.any,
-      );
-
-      if (result != null && result.files.single.path != null) {
-        File sourceFile = File(result.files.single.path!);
-        if (!sourceFile.path.endsWith('.db')) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Por favor, selecciona un archivo .db válido.')));
-          return;
-        }
-        
-        final dbPath = await DatabaseHelper.instance.getDatabasePath();
-        await sourceFile.copy(dbPath);
-        
-        if (mounted) {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              title: const Text('Copia Restaurada'),
-              content: const Text('La copia de seguridad se ha restaurado con éxito. Por favor, reinicia la aplicación para cargar los nuevos datos.'),
-              actions: [
-                TextButton(
-                  onPressed: () => exit(0),
-                  child: const Text('Cerrar App'),
-                )
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al importar: $e')));
-      }
-    }
-  }
-
-  Future<void> _changeIcon(String? iconName) async {
-    try {
-      if (await FlutterDynamicIconPlus.supportsAlternateIcons) {
-        await FlutterDynamicIconPlus.setAlternateIconName(iconName: iconName);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Icono cambiado (la app podría cerrarse momentáneamente)')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cambiar el icono: $e')),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
-
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Configuración'),
+        title: const Text('Configuración', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: Column(
+      body: ListView(
         children: [
-          Expanded(
-            child: ListView(
-              children: [
-                SwitchListTile(
-                  title: const Text('Modo Oscuro'),
-                  subtitle: const Text('Activar paleta de colores oscuros'),
-                  value: settings.isDarkMode,
-                  activeTrackColor: Colors.black,
-                  onChanged: (bool value) {
-                    ref.read(settingsProvider.notifier).toggleDarkMode();
-                  },
-                ),
-                const Divider(),
-                ListTile(
-                  title: const Text('Escala de Notas'),
-                  subtitle: const Text('Define los límites y validaciones de notas'),
-                  trailing: DropdownButton<String>(
-                    value: settings.escalaNotas,
-                    items: <String>['1 a 7', '0 a 100'].map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value),
-                      );
-                    }).toList(),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        ref.read(settingsProvider.notifier).setEscalaNotas(newValue);
-                      }
-                    },
-                  ),
-                ),
-                const Divider(),
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('Icono de la App', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.apps),
-                  title: const Text('Clásico'),
-                  onTap: () => _changeIcon(null),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.apps_outage),
-                  title: const Text('Minimalista (Nuevo)'),
-                  onTap: () => _changeIcon('com.example.notas.Icon2'),
-                ),
-                const Divider(),
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('Notificaciones y Alertas', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                ListTile(
-                  title: const Text('Recordatorio de Clases'),
-                  subtitle: const Text('Minutos antes de cada bloque del horario'),
-                  trailing: DropdownButton<int>(
-                    value: settings.minutosAntesClase,
-                    items: <int>[5, 10, 15, 30, 60].map((int value) {
-                      return DropdownMenuItem<int>(
-                        value: value,
-                        child: Text('$value min'),
-                      );
-                    }).toList(),
-                    onChanged: (int? newValue) {
-                      if (newValue != null) {
-                        ref.read(settingsProvider.notifier).setMinutosAntesClase(newValue);
-                        // Idealmente re-programar notificaciones aquí
-                      }
-                    },
-                  ),
-                ),
-                ListTile(
-                  title: const Text('Recordatorio de Evaluaciones'),
-                  subtitle: const Text('Horas antes de una prueba o certamen'),
-                  trailing: DropdownButton<int>(
-                    value: settings.horasAntesEvaluacion,
-                    items: <int>[1, 2, 12, 24, 48].map((int value) {
-                      return DropdownMenuItem<int>(
-                        value: value,
-                        child: Text('$value hrs'),
-                      );
-                    }).toList(),
-                    onChanged: (int? newValue) {
-                      if (newValue != null) {
-                        ref.read(settingsProvider.notifier).setHorasAntesEvaluacion(newValue);
-                        // Idealmente re-programar notificaciones aquí
-                      }
-                    },
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.notifications_active),
-                  title: const Text('Permisos de Notificación'),
-                  subtitle: const Text('Otorgar permisos para recibir alertas'),
-                  onTap: () async {
-                    bool granted = await NotificationService.requestPermissions();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(granted ? 'Permisos otorgados' : 'Permisos denegados')),
-                      );
-                    }
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.bug_report),
-                  title: const Text('Probar Notificaciones'),
-                  subtitle: const Text('Lanzar una notificación de prueba ahora'),
-                  onTap: () {
-                    NotificationService.showInstantNotification('Prueba', '¡Las notificaciones funcionan correctamente!');
-                  },
-                ),
-                const Divider(),
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('Datos', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.upload_file),
-                  title: const Text('Exportar Copia de Seguridad'),
-                  subtitle: const Text('Guarda tus notas y ramos en un archivo'),
-                  onTap: _exportDatabase,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.download),
-                  title: const Text('Importar Copia de Seguridad'),
-                  subtitle: const Text('Restaura un archivo de copia de seguridad anterior'),
-                  onTap: _importDatabase,
-                ),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.info),
-                  title: const Text('Acerca de Notas'),
-                  subtitle: const Text('Versión, Actualizaciones, Novedades y Privacidad'),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const AppInfoView()),
-                    );
-                  },
-                ),
-              ],
-            ),
+          const SizedBox(height: 10),
+          ListTile(
+            leading: const Icon(Icons.palette),
+            title: const Text('Apariencia'),
+            subtitle: const Text('Tema, colores y el icono de la app'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AppearanceSettingsView()));
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.notifications),
+            title: const Text('Notificaciones y Alertas'),
+            subtitle: const Text('Permisos y tiempos de recordatorio'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsSettingsView()));
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.storage),
+            title: const Text('Datos y Almacenamiento'),
+            subtitle: const Text('Copias de seguridad y sistema de notas'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const DataSettingsView()));
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.info),
+            title: const Text('Acerca de Notas'),
+            subtitle: const Text('Versión, novedades y política de privacidad'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const AppInfoView()));
+            },
           ),
         ],
       ),

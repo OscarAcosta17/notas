@@ -8,7 +8,20 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.0.10] - Widgets Nativos y Sonidos
+**Fecha**: Julio 2026
 
+**📦 Enlace de Descarga:** [NotasApp-v1.0.10.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.0.10/notas-v1.0.10.apk)
+
+**Novedades y Características:**
+- **Reorganización de Ajustes**: La configuración ahora está separada en secciones lógicas (Apariencia, Notificaciones, Datos) para mayor limpieza.
+- **Widgets de Inicio (Android Nativos)**: 
+  - **Horario**: Estilo de lista por días (similar a Outlook), separando Lunes a Viernes con tus bloques asignados.
+  - **Agenda**: Lista interactiva de todas tus evaluaciones futuras para mantenerte siempre al tanto.
+- **Sonidos Personalizados**: Las notificaciones de clase y evaluación ahora incluyen audios (`.wav`) específicos para diferenciarlos fácilmente.
+- **Corrección de Alertas en Curso**: Solucionado el problema donde las clases recién creadas y actualmente en curso no lanzaban la alerta de forma inmediata.
+
+---
 ### [v1.0.9] - Widgets de Inicio y Horarios Personalizables
 **Fecha**: Julio 2026
 
@@ -27,7 +40,8 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 **📦 Enlace de Descarga:** [NotasApp-v1.0.8.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.0.8/notas-v1.0.8.apk)
 
 **Novedades y Características:**
-- **Copias de Seguridad**: ¡Tus datos ahora están más seguros! Puedes Exportar e Importar todo el estado de tu aplicación (ramos, evaluaciones, horarios) con un solo botón en Configuración.
+- **Copia de seguridad local**: Exporta e importa la base de datos de tus horarios y evaluaciones para evitar pérdida de datos o para migrar tu información.
+- **Sonidos de Notificación Dinámicos**: Personaliza el sonido de las notificaciones para clases y evaluaciones. La app detecta automáticamente todos los sonidos colocados en la carpeta `android/app/src/main/res/raw`, ¡por lo que añadir nuevos tonos es muy sencillo!
 - **Acerca de Notas**: Se movió la información de versión, actualizaciones, licencias y políticas a una sección dedicada y más ordenada.
 
 ---
