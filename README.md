@@ -8,6 +8,16 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.2] - Apoyo al Desarrollo
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.2.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.2/NotasApp-v1.1.2.apk)
+
+**Novedades y Características:**
+- **Botón de Donación**: Se ha añadido un botón en la configuración para aquellos que deseen apoyar voluntariamente el desarrollo continuo y mantenimiento de la aplicación.
+- **Rediseño de Diálogos**: El nuevo menú de donación estrena un diseño más amigable y pulido.
+
+---
 ### [v1.1.1] - Exportación ICS y Corrección de Sonidos
 **Fecha**: Julio 2026
 
