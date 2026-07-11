@@ -29,7 +29,7 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.1.2)'),
+        title: const Text('Novedades (v1.1.3)'),
         content: const SingleChildScrollView(
           child: Text(
             '• Apoyo al Desarrollo: Se añadió un nuevo menú en la configuración para permitir realizar donaciones de apoyo.\n'

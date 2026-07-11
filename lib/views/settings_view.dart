@@ -61,7 +61,7 @@ class SettingsView extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.favorite, color: Colors.red),
             title: const Text('Apoyar el Proyecto'),
-            subtitle: const Text('Invítame un café ☕'),
+            subtitle: const Text('Invítame un café ☕ (Apreta para donar)'),
             onTap: () {
               showDialog(
                 context: context,
@@ -117,8 +117,10 @@ class SettingsView extends ConsumerWidget {
                               ),
                               onPressed: () async {
                                 final uri = Uri.parse('https://link.mercadopago.cl/donacionappnotas');
-                                if (await canLaunchUrl(uri)) {
+                                try {
                                   await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                } catch (e) {
+                                  debugPrint('No se pudo abrir el enlace: $e');
                                 }
                                 if (context.mounted) Navigator.pop(context);
                               },
