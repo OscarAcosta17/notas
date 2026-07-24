@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../viewmodels/settings_provider.dart';
@@ -11,6 +13,65 @@ class DataSettingsView extends ConsumerStatefulWidget {
 }
 
 class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
+  String _cacheSizeStr = 'Calculando...';
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateCacheSize();
+  }
+
+  Future<void> _calculateCacheSize() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      int totalSize = 0;
+      if (dir.existsSync()) {
+        dir.listSync(recursive: true, followLinks: false).forEach((FileSystemEntity entity) {
+          if (entity is File) {
+            totalSize += entity.lengthSync();
+          }
+        });
+      }
+      
+      setState(() {
+        if (totalSize < 1024) {
+          _cacheSizeStr = '$totalSize B';
+        } else if (totalSize < 1024 * 1024) {
+          _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
+        } else {
+          _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(2)} MB';
+        }
+      });
+    } catch (e) {
+      setState(() => _cacheSizeStr = 'Desconocido');
+    }
+  }
+
+  Future<void> _clearCache() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      if (dir.existsSync()) {
+        dir.listSync(recursive: true, followLinks: false).forEach((FileSystemEntity entity) {
+          if (entity is File) {
+            entity.deleteSync();
+          }
+        });
+      }
+      await _calculateCacheSize();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Caché limpiada correctamente.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al limpiar caché: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _exportBackup() async {
     try {
       final path = await DatabaseHelper.instance.exportDatabase();
@@ -93,6 +154,17 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
             title: const Text('Importar Datos'),
             subtitle: const Text('Restaurar desde una copia previa'),
             onTap: _importBackup,
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('Almacenamiento', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cleaning_services),
+            title: const Text('Limpiar Caché'),
+            subtitle: Text('Archivos temporales (imágenes, actualizadores): $_cacheSizeStr'),
+            onTap: _clearCache,
           ),
         ],
       ),

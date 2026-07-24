@@ -4,6 +4,8 @@ import '../services/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/ics_export_service.dart';
+import '../services/schedule_image_exporter.dart';
+import 'package:open_filex/open_filex.dart';
 class HorarioView extends StatefulWidget {
   final int semesterId;
   const HorarioView({super.key, required this.semesterId});
@@ -235,6 +237,54 @@ class _HorarioViewState extends State<HorarioView> {
       return;
     }
 
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Opciones de Exportación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.image, color: Colors.blue),
+                title: const Text('Compartir como Imagen'),
+                subtitle: const Text('Genera una cuadrícula visual de tu horario'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await ScheduleImageExporter.exportHorarioImage(_clases, _semesterName);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.green),
+                title: const Text('Enviar archivo .ics'),
+                subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _exportIcs(false);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_month, color: Colors.orange),
+                title: const Text('Exportar a otra app (Calendario)'),
+                subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _exportIcs(true);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Future<void> _exportIcs(bool openWithExternalApp) async {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2000),
@@ -244,11 +294,16 @@ class _HorarioViewState extends State<HorarioView> {
         end: DateTime.now().add(const Duration(days: 120)), // Default 4 months (typical semester)
       ),
       helpText: 'Selecciona la duración del semestre',
-      saveText: 'Exportar',
+      saveText: 'Continuar',
     );
 
     if (picked != null) {
-      await IcsExportService.exportHorario(_clases, picked.start, picked.end);
+      if (openWithExternalApp) {
+        final filePath = await IcsExportService.generateHorarioIcsPath(_clases, picked.start, picked.end);
+        await OpenFilex.open(filePath);
+      } else {
+        await IcsExportService.exportHorario(_clases, picked.start, picked.end);
+      }
     }
   }
 

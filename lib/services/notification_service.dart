@@ -22,6 +22,10 @@ class NotificationService {
     return statusNotif.isGranted && (statusAlarm.isGranted || statusAlarm.isRestricted); // Restricted might mean it's not applicable or already allowed by default on older OS
   }
 
+  static Future<void> cancelAll() async {
+    await _notificationsPlugin.cancelAll();
+  }
+
   static Future<void> showInstantNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'update_channel',
@@ -63,6 +67,9 @@ class NotificationService {
 
   static Future<void> showInstantClassNotification(ClaseHorario clase) async {
     final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('notificationsEnabled') ?? true;
+    if (!enabled) return;
+    
     final soundName = prefs.getString('selectedClassSound') ?? 'clase_sound';
     
     final androidDetails = AndroidNotificationDetails(
@@ -85,6 +92,9 @@ class NotificationService {
 
   static Future<void> showInstantEvalNotification(Evaluacion ev, String ramoNombre) async {
     final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('notificationsEnabled') ?? true;
+    if (!enabled) return;
+
     final soundName = prefs.getString('selectedEvalSound') ?? 'eval_sound';
     
     final androidDetails = AndroidNotificationDetails(
@@ -109,6 +119,9 @@ class NotificationService {
     if (ev.fecha == null || ev.id == null) return;
     
     final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('notificationsEnabled') ?? true;
+    if (!enabled) return;
+
     final horasAntes = prefs.getInt('horasAntesEvaluacion') ?? 24;
     final soundName = prefs.getString('selectedEvalSound') ?? 'eval_sound';
 
@@ -163,6 +176,10 @@ class NotificationService {
   static Future<void> scheduleClassReminder(ClaseHorario clase) async {
     if (clase.id == null) return;
 
+    final prefs = await SharedPreferences.getInstance();
+    final enabled = prefs.getBool('notificationsEnabled') ?? true;
+    if (!enabled) return;
+
     final blockTimes = {
       1: [8, 15],
       3: [9, 40],
@@ -176,7 +193,6 @@ class NotificationService {
 
     final time = blockTimes[clase.bloque] ?? [8, 0];
     
-    final prefs = await SharedPreferences.getInstance();
     final minutosAntes = prefs.getInt('minutosAntesClase') ?? 15;
     final soundName = prefs.getString('selectedClassSound') ?? 'clase_sound';
 

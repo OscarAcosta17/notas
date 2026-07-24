@@ -42,6 +42,30 @@ class _NotificationsSettingsViewState extends ConsumerState<NotificationsSetting
       ),
       body: ListView(
         children: [
+          SwitchListTile(
+            title: const Text('Habilitar notificaciones globales', style: TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: const Text('Activa o desactiva todas las alertas de la aplicación'),
+            value: settings.notificationsEnabled,
+            activeColor: Theme.of(context).colorScheme.primary,
+            onChanged: (bool value) async {
+              await ref.read(settingsProvider.notifier).setNotificationsEnabled(value);
+              if (!value) {
+                await NotificationService.cancelAll();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Todas las notificaciones han sido desactivadas.')),
+                  );
+                }
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Notificaciones activadas.')),
+                  );
+                }
+              }
+            },
+          ),
+          const Divider(),
           const Padding(
             padding: EdgeInsets.all(16.0),
             child: Text('Tiempos de Aviso', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

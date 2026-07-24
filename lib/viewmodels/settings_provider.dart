@@ -5,6 +5,7 @@ class SettingsState {
   final bool isDarkMode;
   final String escalaNotas; // '1 a 7' o '0 a 100'
 
+  final bool notificationsEnabled;
   final int minutosAntesClase;
   final int horasAntesEvaluacion;
   
@@ -14,6 +15,7 @@ class SettingsState {
   SettingsState({
     required this.isDarkMode,
     required this.escalaNotas,
+    required this.notificationsEnabled,
     required this.minutosAntesClase,
     required this.horasAntesEvaluacion,
     required this.selectedClassSound,
@@ -23,6 +25,7 @@ class SettingsState {
   SettingsState copyWith({
     bool? isDarkMode,
     String? escalaNotas,
+    bool? notificationsEnabled,
     int? minutosAntesClase,
     int? horasAntesEvaluacion,
     String? selectedClassSound,
@@ -31,6 +34,7 @@ class SettingsState {
     return SettingsState(
       isDarkMode: isDarkMode ?? this.isDarkMode,
       escalaNotas: escalaNotas ?? this.escalaNotas,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       minutosAntesClase: minutosAntesClase ?? this.minutosAntesClase,
       horasAntesEvaluacion: horasAntesEvaluacion ?? this.horasAntesEvaluacion,
       selectedClassSound: selectedClassSound ?? this.selectedClassSound,
@@ -42,6 +46,7 @@ class SettingsState {
 class SettingsNotifier extends Notifier<SettingsState> {
   static const _darkModeKey = 'isDarkMode';
   static const _escalaKey = 'escalaNotas';
+  static const _notifEnabledKey = 'notificationsEnabled';
   static const _minClaseKey = 'minutosAntesClase';
   static const _hrsEvalKey = 'horasAntesEvaluacion';
   static const _classSoundKey = 'selectedClassSound';
@@ -53,6 +58,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     return SettingsState(
       isDarkMode: false, 
       escalaNotas: '1 a 7',
+      notificationsEnabled: true,
       minutosAntesClase: 15,
       horasAntesEvaluacion: 24,
       selectedClassSound: 'clase_sound',
@@ -64,6 +70,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final prefs = await SharedPreferences.getInstance();
     final isDarkMode = prefs.getBool(_darkModeKey) ?? false;
     final escalaNotas = prefs.getString(_escalaKey) ?? '1 a 7';
+    final notifEnabled = prefs.getBool(_notifEnabledKey) ?? true;
     final minClase = prefs.getInt(_minClaseKey) ?? 15;
     final hrsEval = prefs.getInt(_hrsEvalKey) ?? 24;
     final classSound = prefs.getString(_classSoundKey) ?? 'clase_sound';
@@ -72,6 +79,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = SettingsState(
       isDarkMode: isDarkMode, 
       escalaNotas: escalaNotas,
+      notificationsEnabled: notifEnabled,
       minutosAntesClase: minClase,
       horasAntesEvaluacion: hrsEval,
       selectedClassSound: classSound,
@@ -114,6 +122,12 @@ class SettingsNotifier extends Notifier<SettingsState> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_evalSoundKey, soundName);
     state = state.copyWith(selectedEvalSound: soundName);
+  }
+
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_notifEnabledKey, enabled);
+    state = state.copyWith(notificationsEnabled: enabled);
   }
 }
 
