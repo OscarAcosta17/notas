@@ -74,12 +74,8 @@ class ScheduleImageExporter {
     final Map<String, Color> subjectColors = {};
     int colorIdx = 0;
 
-<<<<<<< HEAD
     // Group classes by grid cell (col, row)
     final Map<String, List<ClaseHorario>> grid = {};
-
-=======
->>>>>>> 580982f679a140921933e5c9bfc8c73dbb1555fd
     for (var clase in clases) {
       if (!subjectColors.containsKey(clase.subjectName)) {
         subjectColors[clase.subjectName] = colors[colorIdx % colors.length];
@@ -100,7 +96,6 @@ class ScheduleImageExporter {
         default: continue;
       }
 
-<<<<<<< HEAD
       if (col < 0 || col > 4) continue;
       
       String key = '${col}_${row}';
@@ -145,24 +140,6 @@ class ScheduleImageExporter {
         if (clase.sala.isNotEmpty) {
           _drawText(canvas, clase.sala, Rect.fromLTWH(subRect.left + 4, subRect.bottom - 20, subRect.width - 8, 16), true, Colors.black87, Alignment.bottomRight, 12);
         }
-=======
-      final cellRect = Rect.fromLTWH(margin + timeColWidth + col * colWidth, margin + headerHeight + row * rowHeight, colWidth, rowHeight);
-      final fillPaint = Paint()..color = subjectColors[clase.subjectName]!
-                               ..style = PaintingStyle.fill;
-      canvas.drawRect(cellRect, fillPaint);
-      canvas.drawRect(cellRect, linePaint); // Redraw border
-
-      // Draw Class info
-      // Top Left: Name
-      _drawText(canvas, clase.subjectName, Rect.fromLTWH(cellRect.left + 8, cellRect.top + 8, cellRect.width - 16, cellRect.height / 2), true, Colors.black87, Alignment.topLeft, 16);
-      
-      // Bottom Right: Sala & Paralelo
-      final salaText = (clase.sala.isNotEmpty || clase.paralelo.isNotEmpty) 
-          ? '${clase.sala} ${clase.paralelo}'.trim() 
-          : '';
-      if (salaText.isNotEmpty) {
-        _drawText(canvas, salaText, Rect.fromLTWH(cellRect.left + 8, cellRect.top + cellRect.height / 2, cellRect.width - 16, cellRect.height / 2 - 8), true, Colors.black87, Alignment.bottomRight, 15);
->>>>>>> 580982f679a140921933e5c9bfc8c73dbb1555fd
       }
     }
     
