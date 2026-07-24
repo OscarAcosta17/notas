@@ -8,6 +8,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.4] - Opciones de Exportación y Limpieza
+**Fecha**: Julio 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.4.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.4/NotasApp-v1.1.4.apk)
+
+**Novedades y Características:**
+- **Exportar Horario a Imagen**: Nueva opción para guardar y compartir tu horario visualmente como una imagen (PNG).
+- **Control de Notificaciones**: Nuevo interruptor global en Ajustes para encender y apagar todas las notificaciones fácilmente.
+- **Limpieza de Caché**: Añadida la opción para visualizar y limpiar la caché (archivos temporales) y optimizar el almacenamiento.
+- **Opciones Externas**: Al exportar la agenda o el horario (.ics), ahora puedes elegir "Abrir en otra App" para añadirlo rápidamente a tu calendario sin guardar el archivo manualmente.
+- **Gestión de Semestres**: Manten presionado el chip del semestre para poder Renombrarlo o Eliminarlo por completo.
+
 ### [v1.1.3] - Apoyo al Desarrollo (Hotfix)
 **Fecha**: Julio 2026
 

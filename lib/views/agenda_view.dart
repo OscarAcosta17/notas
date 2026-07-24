@@ -4,6 +4,7 @@ import '../services/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
 import '../services/ics_export_service.dart';
+import 'package:open_filex/open_filex.dart';
 import 'settings_view.dart';
 class AgendaView extends StatefulWidget {
   const AgendaView({super.key});
@@ -222,6 +223,45 @@ class _AgendaViewState extends State<AgendaView> {
       return;
     }
 
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Opciones de Exportación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.share, color: Colors.green),
+                title: const Text('Enviar archivo .ics'),
+                subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _executeAgendaExport(false);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.calendar_month, color: Colors.orange),
+                title: const Text('Exportar a otra app (Calendario)'),
+                subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _executeAgendaExport(true);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Future<void> _executeAgendaExport(bool openWithExternalApp) async {
     final evs = _evaluations.map((e) => e['eval'] as Evaluacion).toList();
     final namesMap = <int, String>{};
     for (var e in _evaluations) {
@@ -229,7 +269,12 @@ class _AgendaViewState extends State<AgendaView> {
       namesMap[eval.idCategoria] = e['subjectName'] as String;
     }
 
-    await IcsExportService.exportAgenda(evs, namesMap);
+    if (openWithExternalApp) {
+      final filePath = await IcsExportService.generateAgendaIcsPath(evs, namesMap);
+      await OpenFilex.open(filePath);
+    } else {
+      await IcsExportService.exportAgenda(evs, namesMap);
+    }
   }
 
   @override

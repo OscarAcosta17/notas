@@ -16,7 +16,7 @@ class IcsExportService {
         "${utc.second.toString().padLeft(2, '0')}Z";
   }
 
-  static Future<void> exportAgenda(List<Evaluacion> evaluaciones, Map<int, String> ramosNombres) async {
+  static Future<String> generateAgendaIcsPath(List<Evaluacion> evaluaciones, Map<int, String> ramosNombres) async {
     final buffer = StringBuffer();
     buffer.writeln('BEGIN:VCALENDAR');
     buffer.writeln('VERSION:2.0');
@@ -44,11 +44,15 @@ class IcsExportService {
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/Agenda.ics');
     await file.writeAsString(buffer.toString());
-    
-    await Share.shareXFiles([XFile(file.path)], text: 'Mi Agenda de Evaluaciones');
+    return file.path;
   }
 
-  static Future<void> exportHorario(List<ClaseHorario> clases, DateTime startDate, DateTime endDate) async {
+  static Future<void> exportAgenda(List<Evaluacion> evaluaciones, Map<int, String> ramosNombres) async {
+    final path = await generateAgendaIcsPath(evaluaciones, ramosNombres);
+    await Share.shareXFiles([XFile(path)], text: 'Mi Agenda de Evaluaciones');
+  }
+
+  static Future<String> generateHorarioIcsPath(List<ClaseHorario> clases, DateTime startDate, DateTime endDate) async {
     final buffer = StringBuffer();
     buffer.writeln('BEGIN:VCALENDAR');
     buffer.writeln('VERSION:2.0');
@@ -110,6 +114,11 @@ class IcsExportService {
     final file = File('${dir.path}/Horario.ics');
     await file.writeAsString(buffer.toString());
     
-    await Share.shareXFiles([XFile(file.path)], text: 'Mi Horario Semanal');
+    return file.path;
+  }
+
+  static Future<void> exportHorario(List<ClaseHorario> clases, DateTime startDate, DateTime endDate) async {
+    final path = await generateHorarioIcsPath(clases, startDate, endDate);
+    await Share.shareXFiles([XFile(path)], text: 'Mi Horario Semanal');
   }
 }

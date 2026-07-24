@@ -68,29 +68,116 @@ class _HomeViewState extends ConsumerState<HomeView> {
           final isSelected = sem.id == _selectedSemesterId;
           return Padding(
             padding: const EdgeInsets.only(right: 8, top: 8, bottom: 8),
-            child: ChoiceChip(
-              label: Text(
-                sem.nombre,
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+            child: GestureDetector(
+              onLongPress: () => _showSemesterOptions(sem),
+              child: ChoiceChip(
+                label: Text(
+                  sem.nombre,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
-              ),
-              selected: isSelected,
-              selectedColor: Theme.of(context).colorScheme.primary,
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? Colors.transparent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
+                selected: isSelected,
+                selectedColor: Theme.of(context).colorScheme.primary,
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isSelected ? Colors.transparent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2),
+                  ),
                 ),
+                onSelected: (val) {
+                  if (val) _selectSemester(sem.id!);
+                },
               ),
-              onSelected: (val) {
-                if (val) _selectSemester(sem.id!);
-              },
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _showSemesterOptions(Semestre sem) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Renombrar Semestre'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _renameSemester(sem);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Eliminar Semestre', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteSemester(sem);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _renameSemester(Semestre sem) {
+    final ctrl = TextEditingController(text: sem.nombre);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Renombrar Semestre'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(labelText: 'Nombre'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) {
+                sem.nombre = ctrl.text.trim();
+                ref.read(semestreProvider.notifier).actualizarSemestre(sem);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSemester(Semestre sem) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Semestre'),
+        content: Text('¿Estás seguro de que deseas eliminar el semestre "${sem.nombre}"? Se borrarán todos los ramos, clases y evaluaciones asociados. Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () {
+              ref.read(semestreProvider.notifier).eliminarSemestre(sem.id!);
+              if (_selectedSemesterId == sem.id) {
+                _selectedSemesterId = null;
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Eliminar'),
+          ),
+        ],
       ),
     );
   }

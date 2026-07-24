@@ -29,14 +29,14 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.1.3)'),
+        title: const Text('Novedades (v1.1.4)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• Apoyo al Desarrollo: Se añadió un nuevo menú en la configuración para permitir realizar donaciones de apoyo.\n'
-            '• Exportación de Horario y Agenda: Ahora puedes exportar tus clases y evaluaciones al calendario de tu teléfono o a Outlook (.ics).\n'
-            '• Corrección en Ajustes: El botón de probar sonidos en la configuración ya vuelve a reproducir audio sin problemas.\n'
-            '• Sonidos Dinámicos: 10 nuevos sonidos de notificación para diferenciar Clases de Evaluaciones.\n'
-            '• Widgets de Inicio Nativos: Agrega tu Horario o tu Agenda a la pantalla de tu móvil.',
+            '• Imagen de Horario: Ahora puedes exportar tu horario como una imagen para compartir.\n'
+            '• Interruptor de Notificaciones: Nuevo botón para apagar/encender todas las notificaciones de golpe.\n'
+            '• Limpiar Caché: Desde Datos puedes borrar archivos temporales y optimizar memoria.\n'
+            '• Exportar a App: Al exportar archivos (.ics) puedes elegir abrirlos directo en tu calendario.\n'
+            '• Modificar Semestres: Mantén presionado un semestre para renombrarlo o borrarlo por completo.',
           ),
         ),
         actions: [
