@@ -223,48 +223,87 @@ class _AgendaViewState extends State<AgendaView> {
       return;
     }
 
+    final subjects = _evaluations.map((e) => e['subjectName'] as String).toSet().toList();
+    final selectedSubjects = Set<String>.from(subjects);
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Opciones de Exportación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        return StatefulBuilder(
+          builder: (context, setStateSB) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Text('Exportar Agenda', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    const Text('Selecciona los ramos a incluir:', style: TextStyle(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: subjects.length,
+                        itemBuilder: (context, index) {
+                          final subject = subjects[index];
+                          return CheckboxListTile(
+                            title: Text(subject),
+                            value: selectedSubjects.contains(subject),
+                            onChanged: (bool? value) {
+                              setStateSB(() {
+                                if (value == true) {
+                                  selectedSubjects.add(subject);
+                                } else {
+                                  selectedSubjects.remove(subject);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(),
+                    ListTile(
+                      leading: const Icon(Icons.share, color: Colors.green),
+                      title: const Text('Enviar archivo .ics'),
+                      subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
+                      onTap: () async {
+                        if (selectedSubjects.isEmpty) return;
+                        Navigator.pop(context);
+                        await _executeAgendaExport(false, selectedSubjects);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.calendar_month, color: Colors.orange),
+                      title: const Text('Exportar a otra app (Calendario)'),
+                      subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
+                      onTap: () async {
+                        if (selectedSubjects.isEmpty) return;
+                        Navigator.pop(context);
+                        await _executeAgendaExport(true, selectedSubjects);
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.green),
-                title: const Text('Enviar archivo .ics'),
-                subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _executeAgendaExport(false);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_month, color: Colors.orange),
-                title: const Text('Exportar a otra app (Calendario)'),
-                subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _executeAgendaExport(true);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
+            );
+          },
         );
       }
     );
   }
 
-  Future<void> _executeAgendaExport(bool openWithExternalApp) async {
-    final evs = _evaluations.map((e) => e['eval'] as Evaluacion).toList();
+  Future<void> _executeAgendaExport(bool openWithExternalApp, Set<String> selectedSubjects) async {
+    final filtered = _evaluations.where((e) => selectedSubjects.contains(e['subjectName'])).toList();
+    final evs = filtered.map((e) => e['eval'] as Evaluacion).toList();
     final namesMap = <int, String>{};
-    for (var e in _evaluations) {
+    for (var e in filtered) {
       final eval = e['eval'] as Evaluacion;
       namesMap[eval.idCategoria] = e['subjectName'] as String;
     }

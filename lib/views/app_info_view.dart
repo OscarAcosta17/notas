@@ -29,14 +29,15 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.1.5)'),
+        title: const Text('Novedades (v1.1.6)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• Imagen de Horario Inteligente: Se resolvieron problemas de superposición en la exportación de horarios con choques de materias, dividiendo las celdas automáticamente.\n'
-            '• Formato Mejorado: Diseño estético en la exportación (Paralelo a la izq, Nombre al centro, Sala a la derecha).\n'
-            '• Interruptor de Notificaciones: Nuevo botón para apagar/encender todas las notificaciones de golpe.\n'
-            '• Limpiar Caché: Desde Datos puedes borrar archivos temporales y optimizar memoria.\n'
-            '• Exportar a App: Al exportar archivos (.ics) puedes elegir abrirlos directo en tu calendario.',
+            '• Escala de Notas configurable (Predeterminado 0-100 o 1-7).\n'
+            '• Modos de Vista: Visualiza tus ramos en Lista, Cuadrícula o Compacta, y arrástralos para ordenarlos a tu gusto.\n'
+            '• Edición Profunda: Edita nombres, pesos y notas requeridas de las categorías y evaluaciones manteniendo presionado.\n'
+            '• Actualización de Notas Dinámica: Ingresa una nota y se guardará y reflejará automáticamente sin presionar Enter.\n'
+            '• Exportación Selectiva: Al exportar tu agenda, elige exactamente qué ramos incluir con el nuevo menú de filtros.\n'
+            '• Mejoras de Backup: Exporta e importa copias de seguridad de forma universal, sin importar dónde las guardes.',
           ),
         ),
         actions: [

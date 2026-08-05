@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../viewmodels/ramo_provider.dart';
+import '../viewmodels/settings_provider.dart';
 import '../models/ramo.dart';
 
 class AddRamoDialog extends ConsumerStatefulWidget {
@@ -13,11 +14,18 @@ class AddRamoDialog extends ConsumerStatefulWidget {
 
 class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
   final _nombreController = TextEditingController();
-  final _notaController = TextEditingController(text: '4.0');
+  late final TextEditingController _notaController;
   
   String _tipoPromedio = 'Aritmético';
   bool _tieneGlobal = false;
   bool _reemplazaPeorNota = true;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = ref.read(settingsProvider);
+    _notaController = TextEditingController(text: settings.escalaNotas == '0 a 100' ? '55' : '4.0');
+  }
 
   void _submit() {
     final nombre = _nombreController.text.trim();

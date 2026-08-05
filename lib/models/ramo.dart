@@ -7,8 +7,9 @@ class Ramo {
   String nombre;
   String tipoPromedio; // 'Aritmetico' or 'Geometrico'
   bool tieneGlobal;
-  bool reemplazaPeorNota; // true = replaces worst evaluation in a specific category (usually not supported with new generic categories, keeping for legacy compatibility or we just ignore it if it's too complex. Actually, the user asked for generic categories, so we'll adapt global logic: if a category is named "Global", it replaces worst category or we just treat it as a standard category with 1 evaluation).
+  bool reemplazaPeorNota; 
   double notaAprobacion;
+  int orderIndex;
   List<CategoriaEvaluacion> categorias; // Transient
 
   Ramo({
@@ -19,6 +20,7 @@ class Ramo {
     required this.tieneGlobal,
     required this.reemplazaPeorNota,
     required this.notaAprobacion,
+    this.orderIndex = 0,
     this.categorias = const [],
   });
 
@@ -31,6 +33,7 @@ class Ramo {
       'has_global_exam': tieneGlobal ? 1 : 0,
       'global_exam_replaces_worst': reemplazaPeorNota ? 1 : 0,
       'min_passing_grade': notaAprobacion,
+      'order_index': orderIndex,
     };
   }
 
@@ -43,6 +46,7 @@ class Ramo {
       tieneGlobal: map['has_global_exam'] == 1,
       reemplazaPeorNota: map['global_exam_replaces_worst'] == 1,
       notaAprobacion: (map['min_passing_grade'] ?? 4.0).toDouble(),
+      orderIndex: map['order_index'] ?? 0,
     );
   }
 

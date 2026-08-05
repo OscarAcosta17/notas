@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/semestre.dart';
+import '../models/ramo.dart';
 import '../viewmodels/ramo_provider.dart';
+import '../viewmodels/settings_provider.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'add_ramo_dialog.dart';
 import 'edit_ramo_dialog.dart';
 import 'ramo_detail_view.dart';
@@ -58,6 +61,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
   @override
   Widget build(BuildContext context) {
     final ramos = ref.watch(ramoProvider(widget.semestre.id!));
+    final settings = ref.watch(settingsProvider);
     final isSelectionMode = _selectedIds.isNotEmpty;
 
     return Scaffold(
@@ -94,7 +98,20 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
               elevation: 0,
               iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
               automaticallyImplyLeading: widget.showBackButton,
-              actions: widget.actions,
+              actions: [
+                if (widget.actions != null) ...widget.actions!,
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.view_list),
+                  onSelected: (value) {
+                    ref.read(settingsProvider.notifier).setSubjectViewMode(value);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'lista', child: Text('Lista')),
+                    const PopupMenuItem(value: 'cuadricula', child: Text('Cuadrícula')),
+                    const PopupMenuItem(value: 'compacta', child: Text('Compacta')),
+                  ],
+                ),
+              ],
             ),
       body: Column(
         children: [
@@ -102,54 +119,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           Expanded(
             child: ramos.isEmpty
                 ? const Center(child: Text('No hay ramos configurados.', style: TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
-              itemCount: ramos.length,
-              itemBuilder: (context, index) {
-                final ramo = ramos[index];
-                final isSelected = _selectedIds.contains(ramo.id);
-
-                return Card(
-                  color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5) : Theme.of(context).colorScheme.surface,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    title: Text(
-                      ramo.nombre,
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: Theme.of(context).colorScheme.onSurface),
-                    ),
-                    subtitle: Text('Promedio: ${ramo.tipoPromedio} - Apruébase con: ${ramo.notaAprobacion}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
-                    trailing: isSelectionMode
-                        ? Icon(
-                            isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                            color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
-                          )
-                        : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-                    onTap: () {
-                      if (isSelectionMode) {
-                        _toggleSelection(ramo.id!);
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => RamoDetailView(ramo: ramo)),
-                        );
-                      }
-                    },
-                    onLongPress: () {
-                      _toggleSelection(ramo.id!);
-                    },
-                  ),
-                );
-              },
-            ),
+                : _buildRamosList(context, ramos, settings.subjectViewMode, isSelectionMode),
           ),
         ],
       ),
@@ -170,6 +140,126 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
                 },
               ),
             ),
+    );
+  }
+
+  Widget _buildRamosList(BuildContext context, List<Ramo> ramos, String mode, bool isSelectionMode) {
+    if (mode == 'cuadricula') {
+      return ReorderableGridView.builder(
+        padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.2,
+        ),
+        itemCount: ramos.length,
+        onReorder: (oldIndex, newIndex) {
+          ref.read(ramoProvider(widget.semestre.id!).notifier).reordenarRamos(oldIndex, newIndex);
+        },
+        itemBuilder: (context, index) {
+          final ramo = ramos[index];
+          return _buildCard(context, ramo, isSelectionMode, true, Key('grid_${ramo.id}'), index, isCompact: false);
+        },
+      );
+    } else {
+      // lista or compacta
+      final isCompact = mode == 'compacta';
+      return ReorderableListView.builder(
+        padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
+        itemCount: ramos.length,
+        onReorder: (oldIndex, newIndex) {
+          ref.read(ramoProvider(widget.semestre.id!).notifier).reordenarRamos(oldIndex, newIndex);
+        },
+        itemBuilder: (context, index) {
+          final ramo = ramos[index];
+          return Padding(
+            key: Key('list_${ramo.id}'),
+            padding: EdgeInsets.only(bottom: isCompact ? 8.0 : 12.0),
+            child: _buildCard(context, ramo, isSelectionMode, false, null, index, isCompact: isCompact),
+          );
+        },
+      );
+    }
+  }
+
+  Widget _buildCard(BuildContext context, Ramo ramo, bool isSelectionMode, bool isGrid, Key? key, int index, {bool isCompact = false}) {
+    final isSelected = _selectedIds.contains(ramo.id);
+    
+    Widget content;
+    if (isGrid) {
+      content = Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              ramo.nombre,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Theme.of(context).colorScheme.onSurface),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 8),
+            Text('Aprob: ${ramo.notaAprobacion}', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+            if (isSelectionMode)
+              Icon(
+                isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+              ),
+          ],
+        ),
+      );
+    } else {
+      content = ListTile(
+        contentPadding: EdgeInsets.symmetric(horizontal: isCompact ? 12 : 20, vertical: isCompact ? 4 : 10),
+        title: Text(
+          ramo.nombre,
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: isCompact ? 16 : 18, color: Theme.of(context).colorScheme.onSurface),
+        ),
+        subtitle: isCompact ? null : Text('Promedio: ${ramo.tipoPromedio} - Apruébase con: ${ramo.notaAprobacion}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+        trailing: isSelectionMode
+            ? Icon(
+                isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+              )
+            : ReorderableDragStartListener(
+                index: index,
+                child: const Icon(Icons.drag_handle, size: 20, color: Colors.grey),
+              ),
+      );
+    }
+
+    return Card(
+      key: key,
+      margin: EdgeInsets.zero,
+      color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5) : Theme.of(context).colorScheme.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+          width: isSelected ? 2 : 1,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          if (isSelectionMode) {
+            _toggleSelection(ramo.id!);
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => RamoDetailView(ramo: ramo)),
+            );
+          }
+        },
+        onLongPress: () {
+          _toggleSelection(ramo.id!);
+        },
+        child: content,
+      ),
     );
   }
 }

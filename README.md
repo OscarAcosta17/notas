@@ -8,6 +8,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.6] - Modos de Vista y Opciones de Agenda
+**Fecha**: Agosto 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.6.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.6/NotasApp-v1.1.6.apk)
+
+**Novedades y Características:**
+- **Escala de Notas:** Ahora puedes elegir si tu institución usa una escala de 0 a 100 o de 1 a 7 como predeterminada, y las nuevas asignaturas se ajustarán a esta regla automáticamente.
+- **Modos de Vista (Lista, Cuadrícula, Compacta):** Cambia el diseño visual de tus asignaturas desde el menú superior y arrástralas manteniendo presionado para reordenarlas a tu gusto.
+- **Edición Profunda:** Modifica los nombres, porcentajes y notas de aprobación mínimas de las Categorías y Evaluaciones manteniendo presionado cada elemento.
+- **Actualización Dinámica:** Edita la nota de cualquier evaluación de forma directa; la calificación y el promedio se recalcularán al instante sin tener que presionar el botón de Enter.
+- **Filtro de Exportación:** Al exportar tus calendarios (.ics), podrás seleccionar específicamente qué asignaturas deseas incluir, ideal para enviar horarios selectivos.
+- **Exportar e Importar:** Exporta tus copias de seguridad de forma fácil usando el menú de compartir de Android (Drive, WhatsApp) e impórtalas utilizando el explorador de archivos nativo para restaurar todos tus datos.
 ### [v1.1.5] - Exportación de Horario Inteligente (Hotfix)
 **Fecha**: Julio 2026
 

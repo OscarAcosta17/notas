@@ -9,6 +9,9 @@ import '../services/home_widget_service.dart';
 
 import 'add_categoria_dialog.dart';
 import 'add_evaluacion_dialog.dart';
+import 'edit_categoria_dialog.dart';
+import 'edit_evaluacion_dialog.dart';
+import 'grade_input_field.dart';
 
 class RamoDetailView extends ConsumerStatefulWidget {
   final Ramo ramo;
@@ -118,6 +121,15 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                   ),
                                 ),
                                 IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 20),
+                                  onPressed: () {
+                                    showDialog(
+                                      context: context,
+                                      builder: (context) => EditCategoriaDialog(ramoId: widget.ramo.id!, categoria: cat),
+                                    );
+                                  },
+                                ),
+                                IconButton(
                                   icon: const Icon(Icons.delete, color: Colors.grey, size: 20),
                                   onPressed: () {
                                     ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarCategoria(cat.id!);
@@ -134,35 +146,26 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                 child: Row(
                                   children: [
                                     Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(ev.nombre),
-                                          if (ev.porcentajePeso != null)
-                                            Text('Peso: ${ev.porcentajePeso}%', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                        ],
+                                      child: InkWell(
+                                        onLongPress: () {
+                                          showDialog(
+                                            context: context,
+                                            builder: (context) => EditEvaluacionDialog(ramoId: widget.ramo.id!, evaluacion: ev),
+                                          );
+                                        },
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(ev.nombre),
+                                            if (ev.porcentajePeso != null)
+                                              Text('Peso: ${ev.porcentajePeso}%', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                          ],
+                                        ),
                                       ),
                                     ),
                                     SizedBox(
                                       width: 80,
-                                      child: TextFormField(
-                                        initialValue: ev.nota?.toString() ?? '',
-                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                                        decoration: InputDecoration(
-                                          hintText: 'Nota',
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(8),
-                                            borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5))
-                                          ),
-                                        ),
-                                        onFieldSubmitted: (value) {
-                                          double? nuevaNota = double.tryParse(value);
-                                          ev.nota = nuevaNota;
-                                          ref.read(categoriaProvider(widget.ramo.id!).notifier).actualizarEvaluacion(ev);
-                                        },
-                                      ),
+                                      child: GradeInputField(ramoId: widget.ramo.id!, evaluacion: ev),
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.close, color: Colors.grey, size: 18),

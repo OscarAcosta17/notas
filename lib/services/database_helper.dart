@@ -5,7 +5,7 @@ import 'dart:io';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
-  static const _databaseVersion = 5; // Incremented for horario_clases
+  static const _databaseVersion = 6; // Incremented for subjects order_index
 
   // Singleton
   DatabaseHelper._privateConstructor();
@@ -57,6 +57,7 @@ class DatabaseHelper {
         has_global_exam INTEGER NOT NULL DEFAULT 0,
         global_exam_replaces_worst INTEGER NOT NULL DEFAULT 0,
         min_passing_grade REAL NOT NULL DEFAULT 4.0,
+        order_index INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
       )
     ''');
@@ -132,6 +133,8 @@ class DatabaseHelper {
           FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
         )
       ''');
+    } else if (oldVersion == 5) {
+      await db.execute('ALTER TABLE subjects ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0');
     }
   }
 
@@ -164,7 +167,7 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> querySubjectsBySemester(int semesterId) async {
     Database db = await instance.database;
-    return await db.query('subjects', where: 'semester_id = ?', whereArgs: [semesterId]);
+    return await db.query('subjects', where: 'semester_id = ?', whereArgs: [semesterId], orderBy: 'order_index ASC, id ASC');
   }
 
   Future<int> deleteSubject(int id) async {
@@ -257,13 +260,11 @@ class DatabaseHelper {
     return backupPath;
   }
 
-  Future<void> importDatabase() async {
-    Directory docs = await getApplicationDocumentsDirectory();
-    final backupPath = join(docs.path, 'NotasDB_backup.db');
-    final backupFile = File(backupPath);
+  Future<void> importDatabase(String sourcePath) async {
+    final backupFile = File(sourcePath);
     
     if (!await backupFile.exists()) {
-      throw Exception("No se encontró copia de seguridad.");
+      throw Exception("No se encontró el archivo seleccionado.");
     }
     
     // Cerrar BD actual

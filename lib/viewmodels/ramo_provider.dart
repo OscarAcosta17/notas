@@ -53,4 +53,26 @@ class RamoNotifier extends Notifier<List<Ramo>> {
       debugPrint("Error al eliminar ramo: $e");
     }
   }
+
+  Future<void> reordenarRamos(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final ramos = List<Ramo>.from(state);
+    final item = ramos.removeAt(oldIndex);
+    ramos.insert(newIndex, item);
+    
+    // Update state optimistically
+    state = ramos;
+    
+    // Update database
+    try {
+      for (int i = 0; i < ramos.length; i++) {
+        ramos[i].orderIndex = i;
+        await DatabaseHelper.instance.updateSubject(ramos[i].toMap());
+      }
+    } catch (e) {
+      debugPrint("Error al reordenar ramos: $e");
+    }
+  }
 }

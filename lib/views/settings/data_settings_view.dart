@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../viewmodels/settings_provider.dart';
 import '../../services/database_helper.dart';
 
@@ -75,9 +77,10 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
   Future<void> _exportBackup() async {
     try {
       final path = await DatabaseHelper.instance.exportDatabase();
+      await Share.shareXFiles([XFile(path)], text: 'Copia de Seguridad de NotasApp');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Copia de seguridad guardada en Descargas:\n$path')),
+          const SnackBar(content: Text('Menú para compartir o guardar abierto.')),
         );
       }
     } catch (e) {
@@ -91,11 +94,17 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
 
   Future<void> _importBackup() async {
     try {
-      await DatabaseHelper.instance.importDatabase();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Copia de seguridad restaurada. Por favor reinicia la app.')),
-        );
+      FilePickerResult? result = await FilePicker.pickFiles();
+      if (result != null) {
+        String? filePath = result.files.single.path;
+        if (filePath != null) {
+          await DatabaseHelper.instance.importDatabase(filePath);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Copia de seguridad restaurada. Por favor reinicia la app.')),
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
