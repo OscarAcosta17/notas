@@ -8,6 +8,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.7] - Fórmulas Personalizadas, Eliminar Peor Nota y Colores
+**Fecha**: Agosto 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.7.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.7/NotasApp-v1.1.7.apk)
+
+**Novedades y Características:**
+- **Tipos de Promedios y Fórmulas:** Calcula el promedio de una categoría usando Promedio Aritmético, Promedio Geométrico o creando tu propia Fórmula Personalizada.
+- **Eliminar Peor Nota:** Opción en las categorías para ignorar automáticamente la calificación más baja al calcular el promedio.
+- **Colores para Asignaturas:** Personaliza cada Ramo asignándole un color distintivo.
+- **Creación Rápida de Evaluaciones:** Al crear una categoría, indica cuántas evaluaciones tendrá y se generarán automáticamente.
+- **Personalización Visual:** Soporte para "Color Terciario" en la apariencia, nuevo modo de lista compacta y número de columnas ajustable para la vista en cuadrícula.
+
 ### [v1.1.6] - Modos de Vista y Opciones de Agenda
 **Fecha**: Agosto 2026
 
