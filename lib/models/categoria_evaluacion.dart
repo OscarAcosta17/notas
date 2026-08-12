@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+import 'package:math_expressions/math_expressions.dart';
 import 'evaluacion.dart';
 
 class CategoriaEvaluacion {
@@ -6,7 +8,11 @@ class CategoriaEvaluacion {
   String nombre;
   double porcentajeTotal;
   double? notaAprobacion;
+  String averageType;
+  String? customFormula;
+  bool dropLowest;
   List<Evaluacion> evaluaciones; // Transient list of children
+  int? droppedEvaluacionId; // Transient property for UI
 
   CategoriaEvaluacion({
     this.id,
@@ -14,7 +20,11 @@ class CategoriaEvaluacion {
     required this.nombre,
     required this.porcentajeTotal,
     this.notaAprobacion,
+    this.averageType = 'Aritmetico',
+    this.customFormula,
+    this.dropLowest = false,
     this.evaluaciones = const [],
+    this.droppedEvaluacionId,
   });
 
   Map<String, dynamic> toMap() {
@@ -24,6 +34,9 @@ class CategoriaEvaluacion {
       'name': nombre,
       'total_weight': porcentajeTotal,
       'min_passing_grade': notaAprobacion,
+      'average_type': averageType,
+      'custom_formula': customFormula,
+      'drop_lowest': dropLowest ? 1 : 0,
     };
   }
 
@@ -34,36 +47,76 @@ class CategoriaEvaluacion {
       nombre: map['name'],
       porcentajeTotal: (map['total_weight'] ?? 0).toDouble(),
       notaAprobacion: map['min_passing_grade'] != null ? (map['min_passing_grade'] as num).toDouble() : null,
+      averageType: map['average_type'] ?? 'Aritmetico',
+      customFormula: map['custom_formula'],
+      dropLowest: map['drop_lowest'] == 1,
     );
   }
 
   // Lógica matemática para esta categoría
   double? calcularPromedio() {
+    droppedEvaluacionId = null;
     if (evaluaciones.isEmpty) return null;
-    
-    // Si tienen pesos específicos, usar promedio ponderado
-    bool usaPesosEspecificos = evaluaciones.any((e) => e.porcentajePeso != null);
-    
-    if (usaPesosEspecificos) {
-      double acumulado = 0;
-      double pesos = 0;
-      for (var ev in evaluaciones) {
-        if (ev.nota != null && ev.porcentajePeso != null) {
-          acumulado += ev.nota! * (ev.porcentajePeso! / 100.0);
-          pesos += ev.porcentajePeso!;
+
+    var evsConNota = evaluaciones.where((e) => e.nota != null).toList();
+    if (evsConNota.isEmpty) return null;
+
+    if (dropLowest && evsConNota.length > 1) {
+      Evaluacion peorEvaluacion = evsConNota.reduce((a, b) => a.nota! < b.nota! ? a : b);
+      droppedEvaluacionId = peorEvaluacion.id;
+      evsConNota.remove(peorEvaluacion);
+    }
+
+    if (averageType == 'Personalizada' && customFormula != null && customFormula!.isNotEmpty) {
+      try {
+        Parser p = Parser();
+        Expression exp = p.parse(customFormula!);
+        ContextModel cm = ContextModel();
+
+        // Evaluate using original indices. User writes e1, e2, e3 based on creation order.
+        // Even if one is dropped, we should probably set its variable to 0 or remove it?
+        // Wait, if it's custom formula, maybe drop lowest is weird? We'll just bind the variables.
+        // We will bind e1, e2, ... to the *actual* evaluated grades.
+        for (int i = 0; i < evaluaciones.length; i++) {
+          final ev = evaluaciones[i];
+          double val = 0.0;
+          if (ev.nota != null && ev.id != droppedEvaluacionId) {
+            val = ev.nota!;
+          }
+          cm.bindVariable(Variable('e\${i + 1}'), Number(val));
         }
+
+        return exp.evaluate(EvaluationType.REAL, cm);
+      } catch (e) {
+        return null; // Error in formula
       }
-      if (pesos == 0) return null;
-      return acumulado / (pesos / 100.0);
-    } else {
-      // Promedio simple de las que tienen nota
-      var evsConNota = evaluaciones.where((e) => e.nota != null).toList();
-      if (evsConNota.isEmpty) return null;
-      double sum = 0;
+    } else if (averageType == 'Geometrico') {
+      double producto = 1.0;
       for (var ev in evsConNota) {
-        sum += ev.nota!;
+        producto *= ev.nota!;
       }
-      return sum / evsConNota.length;
+      return math.pow(producto, 1 / evsConNota.length).toDouble();
+    } else {
+      // Default Aritmetico
+      bool usaPesosEspecificos = evsConNota.any((e) => e.porcentajePeso != null);
+      if (usaPesosEspecificos) {
+        double acumulado = 0;
+        double pesos = 0;
+        for (var ev in evsConNota) {
+          if (ev.porcentajePeso != null) {
+            acumulado += ev.nota! * (ev.porcentajePeso! / 100.0);
+            pesos += ev.porcentajePeso!;
+          }
+        }
+        if (pesos == 0) return null;
+        return acumulado / (pesos / 100.0);
+      } else {
+        double sum = 0;
+        for (var ev in evsConNota) {
+          sum += ev.nota!;
+        }
+        return sum / evsConNota.length;
+      }
     }
   }
 }

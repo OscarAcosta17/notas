@@ -34,6 +34,10 @@ class NotasApp extends ConsumerWidget {
           primary: Colors.black,
           secondary: Colors.grey.shade800,
           surface: Colors.white,
+        ).copyWith(
+          tertiary: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : null,
+          onTertiary: Colors.white,
+          tertiaryContainer: settings.tertiaryColor != null ? Color(settings.tertiaryColor!).withOpacity(0.2) : null,
         ),
       ),
       darkTheme: ThemeData(
@@ -44,6 +48,10 @@ class NotasApp extends ConsumerWidget {
           primary: Colors.white,
           secondary: Colors.grey.shade400,
           surface: const Color(0xFF121212),
+        ).copyWith(
+          tertiary: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : null,
+          onTertiary: Colors.white,
+          tertiaryContainer: settings.tertiaryColor != null ? Color(settings.tertiaryColor!).withOpacity(0.2) : null,
         ),
         scaffoldBackgroundColor: const Color(0xFF121212),
         appBarTheme: const AppBarTheme(

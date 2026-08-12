@@ -100,17 +100,6 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
               automaticallyImplyLeading: widget.showBackButton,
               actions: [
                 if (widget.actions != null) ...widget.actions!,
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.view_list),
-                  onSelected: (value) {
-                    ref.read(settingsProvider.notifier).setSubjectViewMode(value);
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'lista', child: Text('Lista')),
-                    const PopupMenuItem(value: 'cuadricula', child: Text('Cuadrícula')),
-                    const PopupMenuItem(value: 'compacta', child: Text('Compacta')),
-                  ],
-                ),
               ],
             ),
       body: Column(
@@ -119,7 +108,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           Expanded(
             child: ramos.isEmpty
                 ? const Center(child: Text('No hay ramos configurados.', style: TextStyle(color: Colors.grey)))
-                : _buildRamosList(context, ramos, settings.subjectViewMode, isSelectionMode),
+                : _buildRamosList(context, ramos, settings.subjectViewMode, settings.isCompactList, settings.gridCrossAxisCount, isSelectionMode),
           ),
         ],
       ),
@@ -143,15 +132,15 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
     );
   }
 
-  Widget _buildRamosList(BuildContext context, List<Ramo> ramos, String mode, bool isSelectionMode) {
+  Widget _buildRamosList(BuildContext context, List<Ramo> ramos, String mode, bool isCompactList, int gridCols, bool isSelectionMode) {
     if (mode == 'cuadricula') {
       return ReorderableGridView.builder(
         padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: gridCols,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: 1.2,
+          childAspectRatio: gridCols == 3 ? 1.0 : 1.2,
         ),
         itemCount: ramos.length,
         onReorder: (oldIndex, newIndex) {
@@ -164,7 +153,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
       );
     } else {
       // lista or compacta
-      final isCompact = mode == 'compacta';
+      final isCompact = isCompactList;
       return ReorderableListView.builder(
         padding: const EdgeInsets.all(16.0).copyWith(bottom: 100),
         itemCount: ramos.length,
@@ -197,16 +186,16 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
             Text(
               ramo.nombre,
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Theme.of(context).colorScheme.onSurface),
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: ramo.color != null ? Colors.white : Theme.of(context).colorScheme.onSurface),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 8),
-            Text('Aprob: ${ramo.notaAprobacion}', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+            Text('Aprob: ${ramo.notaAprobacion}', style: TextStyle(fontSize: 12, color: ramo.color != null ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
             if (isSelectionMode)
               Icon(
                 isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+                color: isSelected ? (ramo.color != null ? Colors.white : Theme.of(context).colorScheme.primary) : (ramo.color != null ? Colors.white54 : Colors.grey),
               ),
           ],
         ),
@@ -216,30 +205,36 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         contentPadding: EdgeInsets.symmetric(horizontal: isCompact ? 12 : 20, vertical: isCompact ? 4 : 10),
         title: Text(
           ramo.nombre,
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: isCompact ? 16 : 18, color: Theme.of(context).colorScheme.onSurface),
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: isCompact ? 16 : 18, color: ramo.color != null ? Colors.white : Theme.of(context).colorScheme.onSurface),
         ),
-        subtitle: isCompact ? null : Text('Promedio: ${ramo.tipoPromedio} - Apruébase con: ${ramo.notaAprobacion}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+        subtitle: isCompact ? null : Text('Promedio: ${ramo.tipoPromedio} - Apruébase con: ${ramo.notaAprobacion}', style: TextStyle(color: ramo.color != null ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
         trailing: isSelectionMode
             ? Icon(
                 isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+                color: isSelected ? (ramo.color != null ? Colors.white : Theme.of(context).colorScheme.primary) : (ramo.color != null ? Colors.white54 : Colors.grey),
               )
             : ReorderableDragStartListener(
                 index: index,
-                child: const Icon(Icons.drag_handle, size: 20, color: Colors.grey),
+                child: Icon(Icons.drag_handle, size: 20, color: ramo.color != null ? Colors.white70 : Colors.grey),
               ),
       );
     }
 
+    final cardColor = isSelected 
+        ? (ramo.color != null ? Color(ramo.color!).withValues(alpha: 0.8) : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5))
+        : (ramo.color != null ? Color(ramo.color!) : Theme.of(context).colorScheme.surface);
+
     return Card(
       key: key,
       margin: EdgeInsets.zero,
-      color: isSelected ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5) : Theme.of(context).colorScheme.surface,
+      color: cardColor,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+          color: isSelected 
+              ? (ramo.color != null ? Colors.white : Theme.of(context).colorScheme.primary) 
+              : (ramo.color != null ? Colors.transparent : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
           width: isSelected ? 2 : 1,
         ),
       ),

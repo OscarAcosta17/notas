@@ -44,6 +44,26 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
     }
   }
 
+  Future<void> agregarCategoriaConEvaluaciones(CategoriaEvaluacion categoria, int numEvaluaciones) async {
+    try {
+      final idCategoria = await DatabaseHelper.instance.insertCategory(categoria.toMap());
+      if (numEvaluaciones > 0) {
+        for (int i = 0; i < numEvaluaciones; i++) {
+          final ev = Evaluacion(
+            idCategoria: idCategoria,
+            nombre: '${categoria.nombre} ${i + 1}',
+            porcentajePeso: null, // Assuming equal weight or formula driven
+            nota: null,
+          );
+          await DatabaseHelper.instance.insertEvaluation(ev.toMap());
+        }
+      }
+      await cargarCategorias();
+    } catch (e) {
+      debugPrint("Error al agregar categoria con evaluaciones: $e");
+    }
+  }
+
   Future<void> actualizarCategoria(CategoriaEvaluacion categoria) async {
     try {
       await DatabaseHelper.instance.updateCategory(categoria.toMap());

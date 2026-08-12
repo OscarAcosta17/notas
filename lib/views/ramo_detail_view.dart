@@ -156,7 +156,13 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(ev.nombre),
+                                            Text(
+                                              ev.nombre,
+                                              style: TextStyle(
+                                                color: cat.droppedEvaluacionId == ev.id ? Colors.red : Theme.of(context).colorScheme.onSurface,
+                                                decoration: cat.droppedEvaluacionId == ev.id ? TextDecoration.lineThrough : null,
+                                              ),
+                                            ),
                                             if (ev.porcentajePeso != null)
                                               Text('Peso: ${ev.porcentajePeso}%', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                                           ],

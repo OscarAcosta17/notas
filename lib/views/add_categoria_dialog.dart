@@ -18,6 +18,10 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
   double _porcentaje = 0;
   bool _tieneNotaMinima = false;
   double _notaMinima = 4.0;
+  String _averageType = 'Aritmetico';
+  String? _customFormula;
+  bool _dropLowest = false;
+  int _autoCreateCount = 0;
 
   final List<String> _opcionesNombre = [
     'Certámenes',
@@ -134,7 +138,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                   value: _notaMinima,
                   min: minNota,
                   max: maxNota,
-                  divisions: settings.escalaNotas == '0 a 100' ? 100 : 60, // 6.0 divisions for 1-7 (e.g. 1.0 to 7.0 by 0.1)
+                  divisions: settings.escalaNotas == '0 a 100' ? 100 : 60,
                   label: _notaMinima.toStringAsFixed(1),
                   onChanged: (val) {
                     setState(() {
@@ -142,7 +146,60 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                     });
                   },
                 ),
-              ]
+              ],
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _averageType,
+                decoration: const InputDecoration(labelText: 'Tipo de Promedio'),
+                items: ['Aritmetico', 'Geometrico', 'Personalizada'].map((String val) {
+                  return DropdownMenuItem(
+                    value: val,
+                    child: Text(val),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  setState(() {
+                    _averageType = val!;
+                  });
+                },
+              ),
+              if (_averageType == 'Personalizada') ...[
+                const SizedBox(height: 8),
+                const Text('Fórmula (e.g. e1*0.3 + e2*0.7):', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                TextFormField(
+                  initialValue: _customFormula,
+                  decoration: const InputDecoration(
+                    hintText: 'Fórmula',
+                    isDense: true,
+                  ),
+                  onChanged: (val) {
+                    _customFormula = val;
+                  },
+                ),
+              ],
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Eliminar peor nota', style: TextStyle(fontSize: 14)),
+                value: _dropLowest,
+                contentPadding: EdgeInsets.zero,
+                onChanged: (val) {
+                  setState(() {
+                    _dropLowest = val;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: _autoCreateCount.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Autocrear N evaluaciones vacías',
+                  isDense: true,
+                ),
+                onChanged: (val) {
+                  _autoCreateCount = int.tryParse(val) ?? 0;
+                },
+              ),
             ],
           ),
         ),
@@ -161,8 +218,16 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                 nombre: _nombre,
                 porcentajeTotal: _porcentaje,
                 notaAprobacion: _tieneNotaMinima ? _notaMinima : null,
+                averageType: _averageType,
+                customFormula: _averageType == 'Personalizada' ? _customFormula : null,
+                dropLowest: _dropLowest,
               );
-              ref.read(categoriaProvider(widget.ramoId).notifier).agregarCategoria(cat);
+              
+              // Agregar la categoría, esto devuelve la categoría con su ID asignado en la BD
+              // No we just call agregarCategoria and it modifies state.
+              // Wait, agregarCategoria doesn't return the ID... it's async? 
+              // We need the ID to add evaluations to it. Or we just add them in CategoriaProvider.
+              ref.read(categoriaProvider(widget.ramoId).notifier).agregarCategoriaConEvaluaciones(cat, _autoCreateCount);
               Navigator.pop(context);
             }
           },

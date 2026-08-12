@@ -18,12 +18,19 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
   late final TextEditingController _porcentajeController;
   late final TextEditingController _notaController;
 
+  late String _averageType;
+  String? _customFormula;
+  late bool _dropLowest;
+
   @override
   void initState() {
     super.initState();
     _nombreController = TextEditingController(text: widget.categoria.nombre);
     _porcentajeController = TextEditingController(text: widget.categoria.porcentajeTotal.toString());
     _notaController = TextEditingController(text: widget.categoria.notaAprobacion?.toString() ?? '');
+    _averageType = widget.categoria.averageType;
+    _customFormula = widget.categoria.customFormula;
+    _dropLowest = widget.categoria.dropLowest;
   }
 
   void _submit() {
@@ -41,6 +48,9 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
     widget.categoria.nombre = nombre;
     widget.categoria.porcentajeTotal = porcentaje;
     widget.categoria.notaAprobacion = nota;
+    widget.categoria.averageType = _averageType;
+    widget.categoria.customFormula = _averageType == 'Personalizada' ? _customFormula : null;
+    widget.categoria.dropLowest = _dropLowest;
 
     ref.read(categoriaProvider(widget.ramoId).notifier).actualizarCategoria(widget.categoria);
     Navigator.pop(context);
@@ -51,7 +61,7 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       backgroundColor: Theme.of(context).colorScheme.surface,
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -83,6 +93,45 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
                 labelText: 'Nota Mínima (Opcional)',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _averageType,
+              decoration: const InputDecoration(labelText: 'Tipo de Promedio'),
+              items: ['Aritmetico', 'Geometrico', 'Personalizada'].map((String val) {
+                return DropdownMenuItem(
+                  value: val,
+                  child: Text(val),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _averageType = val);
+              },
+            ),
+            if (_averageType == 'Personalizada') ...[
+              const SizedBox(height: 8),
+              const Text('Fórmula (e.g. e1*0.3 + e2*0.7):', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              TextFormField(
+                initialValue: _customFormula,
+                decoration: const InputDecoration(
+                  hintText: 'Fórmula',
+                  isDense: true,
+                ),
+                onChanged: (val) {
+                  _customFormula = val;
+                },
+              ),
+            ],
+            const SizedBox(height: 16),
+            SwitchListTile(
+              title: const Text('Eliminar peor nota', style: TextStyle(fontSize: 14)),
+              value: _dropLowest,
+              contentPadding: EdgeInsets.zero,
+              onChanged: (val) {
+                setState(() {
+                  _dropLowest = val;
+                });
+              },
             ),
             const SizedBox(height: 20),
             Row(

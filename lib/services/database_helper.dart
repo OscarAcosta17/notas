@@ -5,7 +5,7 @@ import 'dart:io';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
-  static const _databaseVersion = 6; // Incremented for subjects order_index
+  static const _databaseVersion = 7; // Incremented for visual/math features
 
   // Singleton
   DatabaseHelper._privateConstructor();
@@ -58,6 +58,7 @@ class DatabaseHelper {
         global_exam_replaces_worst INTEGER NOT NULL DEFAULT 0,
         min_passing_grade REAL NOT NULL DEFAULT 4.0,
         order_index INTEGER NOT NULL DEFAULT 0,
+        color INTEGER,
         FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
       )
     ''');
@@ -69,6 +70,9 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         total_weight REAL NOT NULL,
         min_passing_grade REAL,
+        average_type TEXT NOT NULL DEFAULT 'Aritmetico',
+        custom_formula TEXT,
+        drop_lowest INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
       )
     ''');
@@ -135,6 +139,16 @@ class DatabaseHelper {
       ''');
     } else if (oldVersion == 5) {
       await db.execute('ALTER TABLE subjects ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0');
+    }
+
+    if (oldVersion < 7) {
+      if (oldVersion >= 6) { // If it's jumping from older than 6, we still need to add color but handle properly. We'll just run it safely if it exists by ignoring error or just letting it run since oldVersion < 7.
+        // Wait, version 6 added order_index.
+      }
+      try { await db.execute('ALTER TABLE subjects ADD COLUMN color INTEGER'); } catch (_) {}
+      try { await db.execute('ALTER TABLE categories ADD COLUMN average_type TEXT NOT NULL DEFAULT "Aritmetico"'); } catch (_) {}
+      try { await db.execute('ALTER TABLE categories ADD COLUMN custom_formula TEXT'); } catch (_) {}
+      try { await db.execute('ALTER TABLE categories ADD COLUMN drop_lowest INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
     }
   }
 

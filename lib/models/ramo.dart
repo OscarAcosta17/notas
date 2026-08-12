@@ -10,6 +10,7 @@ class Ramo {
   bool reemplazaPeorNota; 
   double notaAprobacion;
   int orderIndex;
+  int? color;
   List<CategoriaEvaluacion> categorias; // Transient
 
   Ramo({
@@ -21,6 +22,7 @@ class Ramo {
     required this.reemplazaPeorNota,
     required this.notaAprobacion,
     this.orderIndex = 0,
+    this.color,
     this.categorias = const [],
   });
 
@@ -34,6 +36,7 @@ class Ramo {
       'global_exam_replaces_worst': reemplazaPeorNota ? 1 : 0,
       'min_passing_grade': notaAprobacion,
       'order_index': orderIndex,
+      'color': color,
     };
   }
 
@@ -42,11 +45,12 @@ class Ramo {
       id: map['id'],
       idSemestre: map['semester_id'],
       nombre: map['name'],
-      tipoPromedio: map['average_type'],
+      tipoPromedio: map['average_type'] ?? 'Aritmetico',
       tieneGlobal: map['has_global_exam'] == 1,
       reemplazaPeorNota: map['global_exam_replaces_worst'] == 1,
       notaAprobacion: (map['min_passing_grade'] ?? 4.0).toDouble(),
       orderIndex: map['order_index'] ?? 0,
+      color: map['color'],
     );
   }
 

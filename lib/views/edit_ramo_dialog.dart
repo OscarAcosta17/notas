@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../viewmodels/ramo_provider.dart';
 import '../models/ramo.dart';
+import 'package:flex_color_picker/flex_color_picker.dart';
 
 class EditRamoDialog extends ConsumerStatefulWidget {
   final Ramo ramo;
@@ -18,6 +19,7 @@ class _EditRamoDialogState extends ConsumerState<EditRamoDialog> {
   late String _tipoPromedio;
   late bool _tieneGlobal;
   late bool _reemplazaPeorNota;
+  int? _selectedColor;
 
   @override
   void initState() {
@@ -27,6 +29,7 @@ class _EditRamoDialogState extends ConsumerState<EditRamoDialog> {
     _tipoPromedio = widget.ramo.tipoPromedio;
     _tieneGlobal = widget.ramo.tieneGlobal;
     _reemplazaPeorNota = widget.ramo.reemplazaPeorNota;
+    _selectedColor = widget.ramo.color;
   }
 
   void _submit() {
@@ -45,6 +48,8 @@ class _EditRamoDialogState extends ConsumerState<EditRamoDialog> {
       tieneGlobal: _tieneGlobal,
       reemplazaPeorNota: _reemplazaPeorNota,
       notaAprobacion: nota,
+      orderIndex: widget.ramo.orderIndex,
+      color: _selectedColor,
     );
 
     ref.read(ramoProvider(widget.ramo.idSemestre).notifier).actualizarRamo(updatedRamo);
@@ -132,6 +137,44 @@ class _EditRamoDialogState extends ConsumerState<EditRamoDialog> {
                   ),
                 ],
               ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.color_lens, color: _selectedColor != null ? Color(_selectedColor!) : Theme.of(context).colorScheme.onSurface),
+              title: const Text('Color del Ramo', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Color para destacar en la lista'),
+              trailing: _selectedColor != null
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => setState(() => _selectedColor = null),
+                    )
+                  : null,
+              onTap: () async {
+                Color newColor = await showColorPickerDialog(
+                  context,
+                  _selectedColor != null ? Color(_selectedColor!) : Colors.blue,
+                  title: Text('Selecciona el Color', style: Theme.of(context).textTheme.titleLarge),
+                  width: 40,
+                  height: 40,
+                  spacing: 0,
+                  runSpacing: 0,
+                  borderRadius: 0,
+                  wheelDiameter: 165,
+                  enableOpacity: false,
+                  showColorCode: true,
+                  colorCodeHasColor: true,
+                  pickersEnabled: <ColorPickerType, bool>{
+                    ColorPickerType.both: false,
+                    ColorPickerType.primary: false,
+                    ColorPickerType.accent: false,
+                    ColorPickerType.bw: false,
+                    ColorPickerType.custom: false,
+                    ColorPickerType.wheel: true,
+                  },
+                );
+                setState(() => _selectedColor = newColor.value);
+              },
+            ),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
