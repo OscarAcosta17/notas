@@ -77,16 +77,15 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
               }).toList(),
             ),
           ),
-          if (settings.subjectViewMode == 'lista')
-            SwitchListTile(
-              title: const Text('Modo Compacto'),
-              subtitle: const Text('Muestra las asignaturas ocupando menos espacio'),
-              value: settings.isCompactList,
-              onChanged: (bool value) {
-                ref.read(settingsProvider.notifier).setIsCompactList(value);
-              },
-            ),
-          if (settings.subjectViewMode == 'cuadricula')
+          SwitchListTile(
+            title: const Text('Modo Compacto'),
+            subtitle: const Text('Muestra las asignaturas ocupando menos espacio'),
+            value: settings.isCompactList,
+            onChanged: (bool value) {
+              ref.read(settingsProvider.notifier).setIsCompactList(value);
+            },
+          ),
+          if (settings.subjectViewMode == 'cuadricula') ...[
             ListTile(
               title: const Text('Columnas en Cuadrícula'),
               subtitle: const Text('Cantidad de cursos por fila'),
@@ -105,6 +104,34 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
                 }).toList(),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Previsualización:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: List.generate(settings.gridCrossAxisCount, (index) {
+                      return Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          height: settings.isCompactList ? 40 : 80,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.1 + (index * 0.1)),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.5)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text('Ramo \${index + 1}', style: const TextStyle(fontSize: 10)),
+                        ),
+                      );
+                    }),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const Divider(),
           const Padding(
             padding: EdgeInsets.all(16.0),

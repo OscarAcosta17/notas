@@ -39,6 +39,10 @@ class NotasApp extends ConsumerWidget {
           onTertiary: Colors.white,
           tertiaryContainer: settings.tertiaryColor != null ? Color(settings.tertiaryColor!).withOpacity(0.2) : null,
         ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : Colors.black,
+          foregroundColor: Colors.white,
+        ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
@@ -62,6 +66,10 @@ class NotasApp extends ConsumerWidget {
           backgroundColor: Color(0xFF1E1E1E),
           titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
           contentTextStyle: TextStyle(color: Colors.white70, fontSize: 16),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : Colors.white,
+          foregroundColor: Colors.black,
         ),
       ),
       home: const HomeView(),

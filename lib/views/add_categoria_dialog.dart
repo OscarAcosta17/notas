@@ -22,6 +22,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
   String? _customFormula;
   bool _dropLowest = false;
   int _autoCreateCount = 0;
+  final TextEditingController _formulaController = TextEditingController();
 
   final List<String> _opcionesNombre = [
     'Certámenes',
@@ -45,6 +46,12 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _formulaController.dispose();
+    super.dispose();
   }
 
   @override
@@ -148,6 +155,21 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                 ),
               ],
               const SizedBox(height: 16),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: _autoCreateCount.toString(),
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Autocrear N evaluaciones vacías',
+                  isDense: true,
+                ),
+                onChanged: (val) {
+                  setState(() {
+                    _autoCreateCount = int.tryParse(val) ?? 0;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _averageType,
                 decoration: const InputDecoration(labelText: 'Tipo de Promedio'),
@@ -165,9 +187,38 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
               ),
               if (_averageType == 'Personalizada') ...[
                 const SizedBox(height: 8),
+                const Text('Variables disponibles:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Wrap(
+                  spacing: 4,
+                  children: List.generate(_autoCreateCount, (index) {
+                    final eName = 'e\${index + 1}';
+                    return ActionChip(
+                      label: Text(eName),
+                      padding: EdgeInsets.zero,
+                      labelStyle: const TextStyle(fontSize: 12),
+                      onPressed: () {
+                        final text = _formulaController.text;
+                        final selection = _formulaController.selection;
+                        final newText = text.replaceRange(
+                          selection.isValid ? selection.start : text.length,
+                          selection.isValid ? selection.end : text.length,
+                          eName,
+                        );
+                        _formulaController.value = TextEditingValue(
+                          text: newText,
+                          selection: TextSelection.collapsed(
+                            offset: (selection.isValid ? selection.start : text.length) + eName.length,
+                          ),
+                        );
+                        _customFormula = newText;
+                      },
+                    );
+                  }),
+                ),
+                const SizedBox(height: 8),
                 const Text('Fórmula (e.g. e1*0.3 + e2*0.7):', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 TextFormField(
-                  initialValue: _customFormula,
+                  controller: _formulaController,
                   decoration: const InputDecoration(
                     hintText: 'Fórmula',
                     isDense: true,
@@ -186,18 +237,6 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                   setState(() {
                     _dropLowest = val;
                   });
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                initialValue: _autoCreateCount.toString(),
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Autocrear N evaluaciones vacías',
-                  isDense: true,
-                ),
-                onChanged: (val) {
-                  _autoCreateCount = int.tryParse(val) ?? 0;
                 },
               ),
             ],

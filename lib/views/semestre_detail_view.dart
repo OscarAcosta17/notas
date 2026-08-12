@@ -140,7 +140,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           crossAxisCount: gridCols,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
-          childAspectRatio: gridCols == 3 ? 1.0 : 1.2,
+          childAspectRatio: isCompactList ? (gridCols == 3 ? 1.5 : 2.0) : (gridCols == 3 ? 1.0 : 1.2),
         ),
         itemCount: ramos.length,
         onReorder: (oldIndex, newIndex) {
@@ -148,7 +148,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         },
         itemBuilder: (context, index) {
           final ramo = ramos[index];
-          return _buildCard(context, ramo, isSelectionMode, true, Key('grid_${ramo.id}'), index, isCompact: false);
+          return _buildCard(context, ramo, isSelectionMode, true, Key('grid_${ramo.id}'), index, isCompact: isCompactList);
         },
       );
     } else {
@@ -186,12 +186,14 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
             Text(
               ramo.nombre,
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: ramo.color != null ? Colors.white : Theme.of(context).colorScheme.onSurface),
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: isCompact ? 14 : 16, color: ramo.color != null ? Colors.white : Theme.of(context).colorScheme.onSurface),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
-            Text('Aprob: ${ramo.notaAprobacion}', style: TextStyle(fontSize: 12, color: ramo.color != null ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+            if (!isCompact) ...[
+              const SizedBox(height: 8),
+              Text('Aprob: ${ramo.notaAprobacion}', style: TextStyle(fontSize: 12, color: ramo.color != null ? Colors.white70 : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+            ],
             if (isSelectionMode)
               Icon(
                 isSelected ? Icons.check_circle : Icons.radio_button_unchecked,

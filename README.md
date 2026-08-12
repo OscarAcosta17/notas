@@ -8,6 +8,17 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.8] - Fórmulas Interactivas, Mejoras Visuales y Modo Compacto
+**Fecha**: Agosto 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.8.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.8/NotasApp-v1.1.8.apk)
+
+**Novedades y Características:**
+- **Fórmulas Interactivas:** Interfaz renovada al crear fórmulas personalizadas. Ahora puedes seleccionar cuántas evaluaciones generar y se crearán variables interactuables (e1, e2...) que podrás tocar para insertar rápidamente en la fórmula como en Excel.
+- **Modo Compacto Mejorado:** El modo compacto de visualización de ramos ahora aplica de manera universal y funciona también al utilizar la vista de cuadrícula.
+- **Previsualización de Cuadrícula:** Añadido un componente visual en los ajustes para ver cómo se estructurarán las columnas al cambiar entre 2 y 3.
+- **Color Terciario Aplicado:** Se corrigió un detalle visual que impedía ver el Color Terciario en botones flotantes y otros elementos de la interfaz.
+
 ### [v1.1.7] - Fórmulas Personalizadas, Eliminar Peor Nota y Colores
 **Fecha**: Agosto 2026
 

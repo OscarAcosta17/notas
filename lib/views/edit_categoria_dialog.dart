@@ -21,6 +21,7 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
   late String _averageType;
   String? _customFormula;
   late bool _dropLowest;
+  late final TextEditingController _formulaController;
 
   @override
   void initState() {
@@ -31,6 +32,16 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
     _averageType = widget.categoria.averageType;
     _customFormula = widget.categoria.customFormula;
     _dropLowest = widget.categoria.dropLowest;
+    _formulaController = TextEditingController(text: _customFormula ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nombreController.dispose();
+    _porcentajeController.dispose();
+    _notaController.dispose();
+    _formulaController.dispose();
+    super.dispose();
   }
 
   void _submit() {
@@ -110,9 +121,38 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
             ),
             if (_averageType == 'Personalizada') ...[
               const SizedBox(height: 8),
+              const Text('Variables disponibles:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Wrap(
+                spacing: 4,
+                children: List.generate(widget.categoria.evaluaciones.length, (index) {
+                  final eName = 'e\${index + 1}';
+                  return ActionChip(
+                    label: Text(eName),
+                    padding: EdgeInsets.zero,
+                    labelStyle: const TextStyle(fontSize: 12),
+                    onPressed: () {
+                      final text = _formulaController.text;
+                      final selection = _formulaController.selection;
+                      final newText = text.replaceRange(
+                        selection.isValid ? selection.start : text.length,
+                        selection.isValid ? selection.end : text.length,
+                        eName,
+                      );
+                      _formulaController.value = TextEditingValue(
+                        text: newText,
+                        selection: TextSelection.collapsed(
+                          offset: (selection.isValid ? selection.start : text.length) + eName.length,
+                        ),
+                      );
+                      _customFormula = newText;
+                    },
+                  );
+                }),
+              ),
+              const SizedBox(height: 8),
               const Text('Fórmula (e.g. e1*0.3 + e2*0.7):', style: TextStyle(fontSize: 12, color: Colors.grey)),
               TextFormField(
-                initialValue: _customFormula,
+                controller: _formulaController,
                 decoration: const InputDecoration(
                   hintText: 'Fórmula',
                   isDense: true,
