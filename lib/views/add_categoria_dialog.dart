@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/categoria_evaluacion.dart';
 import '../viewmodels/categoria_provider.dart';
 import '../viewmodels/settings_provider.dart';
+import 'formula_editor_dialog.dart';
 
 class AddCategoriaDialog extends ConsumerStatefulWidget {
   final int ramoId;
@@ -187,45 +188,38 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
               ),
               if (_averageType == 'Personalizada') ...[
                 const SizedBox(height: 8),
-                const Text('Variables disponibles:', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                Wrap(
-                  spacing: 4,
-                  children: List.generate(_autoCreateCount, (index) {
-                    final eName = 'e\${index + 1}';
-                    return ActionChip(
-                      label: Text(eName),
-                      padding: EdgeInsets.zero,
-                      labelStyle: const TextStyle(fontSize: 12),
-                      onPressed: () {
-                        final text = _formulaController.text;
-                        final selection = _formulaController.selection;
-                        final newText = text.replaceRange(
-                          selection.isValid ? selection.start : text.length,
-                          selection.isValid ? selection.end : text.length,
-                          eName,
-                        );
-                        _formulaController.value = TextEditingValue(
-                          text: newText,
-                          selection: TextSelection.collapsed(
-                            offset: (selection.isValid ? selection.start : text.length) + eName.length,
-                          ),
-                        );
-                        _customFormula = newText;
-                      },
+                const Text('Fórmula:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 4),
+                InkWell(
+                  onTap: () async {
+                    final result = await showDialog<String>(
+                      context: context,
+                      builder: (context) => FormulaEditorDialog(
+                        initialFormula: _customFormula ?? '',
+                        autoCreateCount: _autoCreateCount,
+                      ),
                     );
-                  }),
-                ),
-                const SizedBox(height: 8),
-                const Text('Fórmula (e.g. e1*0.3 + e2*0.7):', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                TextFormField(
-                  controller: _formulaController,
-                  decoration: const InputDecoration(
-                    hintText: 'Fórmula',
-                    isDense: true,
-                  ),
-                  onChanged: (val) {
-                    _customFormula = val;
+                    if (result != null) {
+                      setState(() {
+                        _customFormula = result;
+                      });
+                    }
                   },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _customFormula?.isNotEmpty == true ? _customFormula! : 'Toca para editar fórmula...',
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: _customFormula?.isNotEmpty == true ? Theme.of(context).colorScheme.onSurface : Colors.grey,
+                      ),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(height: 16),

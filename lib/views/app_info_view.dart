@@ -29,15 +29,13 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.1.6)'),
+        title: const Text('Novedades (v1.1.9)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• Escala de Notas configurable (Predeterminado 0-100 o 1-7).\n'
-            '• Modos de Vista: Visualiza tus ramos en Lista, Cuadrícula o Compacta, y arrástralos para ordenarlos a tu gusto.\n'
-            '• Edición Profunda: Edita nombres, pesos y notas requeridas de las categorías y evaluaciones manteniendo presionado.\n'
-            '• Actualización de Notas Dinámica: Ingresa una nota y se guardará y reflejará automáticamente sin presionar Enter.\n'
-            '• Exportación Selectiva: Al exportar tu agenda, elige exactamente qué ramos incluir con el nuevo menú de filtros.\n'
-            '• Mejoras de Backup: Exporta e importa copias de seguridad de forma universal, sin importar dónde las guardes.',
+            '• 🧮 Nueva Calculadora de Fórmulas: Un editor inmersivo visual estilo Photomath para crear fórmulas personalizadas con botones interactivos.\n'
+            '• ⚙️ Mínimo y Máximo: Ahora puedes usar las funciones min() y max() dentro de tus promedios personalizados.\n'
+            '• 🎨 Rediseño de Ramos: Hemos mejorado la apariencia de la lista de ramos. Ahora el color de cada asignatura se presenta en una elegante franja lateral, dándole un toque mucho más moderno.\n'
+            '• 📏 Eliminar peor nota y configuraciones avanzadas: Mejor integración del sistema de promedios geométricos y lógicas de eliminación de notas.',
           ),
         ),
         actions: [

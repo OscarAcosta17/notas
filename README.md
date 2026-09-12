@@ -8,6 +8,16 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.1.9] - Fórmulas Avanzadas, Rediseño Visual y Funciones Matemáticas
+**Fecha**: Septiembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.1.9.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.1.9/NotasApp-v1.1.9.apk)
+
+**Novedades y Características:**
+- **Calculadora de Fórmulas:** Un editor visual interactivo e inmersivo estilo Photomath para crear fórmulas de evaluación personalizadas mediante botones rápidos.
+- **Funciones Matemáticas:** Soporte completo en la calculadora para calcular de forma dinámica promedios usando `min(a,b)`, `max(a,b)`, raíz cuadrada y potencias.
+- **Rediseño de Asignaturas:** Las tarjetas de ramos en la pantalla principal han sido re-diseñadas para verse mucho más modernas, utilizando una gruesa y elegante franja de color en el lateral izquierdo que reacciona de acuerdo al color del ramo que hayas configurado.
+
 ### [v1.1.8] - Fórmulas Interactivas, Mejoras Visuales y Modo Compacto
 **Fecha**: Agosto 2026
 

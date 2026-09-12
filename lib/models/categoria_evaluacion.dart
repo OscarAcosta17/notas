@@ -69,8 +69,9 @@ class CategoriaEvaluacion {
 
     if (averageType == 'Personalizada' && customFormula != null && customFormula!.isNotEmpty) {
       try {
+        String preprocessed = _preprocessFormula(customFormula!);
         Parser p = Parser();
-        Expression exp = p.parse(customFormula!);
+        Expression exp = p.parse(preprocessed);
         ContextModel cm = ContextModel();
 
         // Evaluate using original indices. User writes e1, e2, e3 based on creation order.
@@ -118,5 +119,49 @@ class CategoriaEvaluacion {
         return sum / evsConNota.length;
       }
     }
+  }
+
+  String _preprocessFormula(String str) {
+    int maxIdx = str.lastIndexOf('max(');
+    int minIdx = str.lastIndexOf('min(');
+    if (maxIdx == -1 && minIdx == -1) return str;
+    
+    bool isMax = maxIdx > minIdx;
+    int startIdx = isMax ? maxIdx : minIdx;
+    
+    int openCount = 0;
+    int? commaIdx;
+    int? closeIdx;
+    
+    int contentStart = startIdx + 4; // 'max(' or 'min('
+    for (int i = contentStart; i < str.length; i++) {
+      if (str[i] == '(') openCount++;
+      else if (str[i] == ')') {
+        if (openCount == 0) {
+          closeIdx = i;
+          break;
+        }
+        openCount--;
+      } else if (str[i] == ',' && openCount == 0) {
+        commaIdx = i;
+      }
+    }
+    
+    if (commaIdx != null && closeIdx != null) {
+      String A = str.substring(contentStart, commaIdx);
+      String B = str.substring(commaIdx + 1, closeIdx);
+      
+      String replacement;
+      if (isMax) {
+        replacement = '((($A)+($B))+abs(($A)-($B)))/2';
+      } else {
+        replacement = '((($A)+($B))-abs(($A)-($B)))/2';
+      }
+      
+      String newStr = str.substring(0, startIdx) + replacement + str.substring(closeIdx + 1);
+      return _preprocessFormula(newStr);
+    }
+    
+    return str;
   }
 }
