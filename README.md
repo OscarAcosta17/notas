@@ -20,6 +20,7 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 - **Color Destacado (Terciario) Real:** Propaga globalmente `accentColor` y `accentContainer` en `NotasVisualTokens` hacia interruptores, controles deslizantes, indicadores, insignia tonal, pestañas y FAB; corrige cancelación del selector cromático y desactiva Material You automáticamente al fijar un acento manual.
 - **Apariencia Ampliada (`Ajustes ➔ Apariencia`):** Añade selector de contraste **OLED puro (`#000000`)**, etiquetas de navegación (**Siempre / Activa / Íconos**), radio de tarjetas (**Compacto / Medio / Expresivo**), estilo de color por asignatura (**Mixto / Franja / Tinte / Borde**), vibración háptica y vistas previas en vivo.
 - **Progreso de Evaluación en Ramos:** Barra e insignia sutil `% evaluado` en la tarjeta principal de `RamoDetailView`.
+- **Actualizador OTA Mejorado y Firma Unificada:** Nueva pantalla completa `UpdateScreen` al detectar actualización al inicio o desde Ajustes, descargas pausables y reanudables (`Range` / `.apk.part`), verificación de permiso `REQUEST_INSTALL_PACKAGES` + MIME APK explícito y keystore consistente para instalar directamente sobre versiones anteriores.
 
 ---
 

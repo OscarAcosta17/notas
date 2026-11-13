@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'services/notification_service.dart';
-import 'services/updater_service.dart';
 import 'services/widget_service.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/settings_provider.dart';
@@ -15,7 +14,6 @@ void main() async {
   await NotificationService.initialize();
   WidgetService.updateAgendaWidget();
   WidgetService.updateHorarioWidget();
-  UpdaterService.checkForUpdatesSilently();
   runApp(const ProviderScope(child: NotasApp()));
 }
 

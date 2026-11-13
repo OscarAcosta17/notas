@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/semestre.dart';
+import '../services/updater_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
 import '../viewmodels/semestre_provider.dart';
@@ -35,6 +36,11 @@ class _HomeViewState extends ConsumerState<HomeView> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentTab);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        UpdaterService.checkForUpdatesOnStartup(context);
+      }
+    });
   }
 
   @override

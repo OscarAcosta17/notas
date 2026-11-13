@@ -40,7 +40,8 @@ class _AppInfoViewState extends State<AppInfoView> {
             '• ↔️ Deslizamiento Horizontal Continuo: Navega suavemente entre Ramos, Horario y Agenda deslizando la pantalla (con auto-enfoque al día actual en Horario).\n'
             '• 🎓 Selector de Semestre en Cabecera: Cambia, renombra o crea semestres desde la píldora superior para aprovechar más pantalla (modo Chips aún disponible).\n'
             '• 🎨 Color Destacado (Terciario) Real y Apariencia Ampliada: Acento terciario aplicado globalmente a controles, navegación e insignias, más modos OLED puro, radio de tarjetas, estilo de color por ramo, etiquetas y vibración háptica.\n'
-            '• 📊 Progreso de Evaluación: Visualiza el porcentaje evaluado en el detalle de cada asignatura.',
+            '• 📊 Progreso de Evaluación: Visualiza el porcentaje evaluado en el detalle de cada asignatura.\n'
+            '• 🚀 Actualizador Mejorado y Pausable: Al abrir la app con una versión disponible aparece una pantalla dedicada con notas de la versión, descarga pausable/reanudable, permiso de instalación asistido y firma unificada.',
           ),
         ),
         actions: [

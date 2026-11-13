@@ -6,6 +6,7 @@ import 'package:notas/models/categoria_evaluacion.dart';
 import 'package:notas/models/evaluacion.dart';
 import 'package:notas/models/ramo.dart';
 import 'package:notas/models/semestre.dart';
+import 'package:notas/services/updater_service.dart';
 import 'package:notas/theme/app_theme.dart';
 import 'package:notas/viewmodels/categoria_provider.dart';
 import 'package:notas/viewmodels/ramo_provider.dart';
@@ -55,6 +56,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    UpdaterService.resetStartupCheck();
   });
 
   group('AppTheme & NotasVisualTokens', () {
@@ -456,6 +458,34 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
       }
       expect(find.byTooltip('Añadir Bloque'), findsOneWidget);
+    });
+
+    testWidgets('UpdateScreen renders version details, release notes, and update actions',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: UpdateScreen(
+              info: ReleaseUpdateInfo(
+                currentVersion: '1.2.0',
+                latestVersion: '1.2.1',
+                downloadUrl: 'https://example.com/app.apk',
+                releaseNotes: '• Mejora de prueba',
+                apkSizeBytes: 25165824,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Actualización Disponible'), findsOneWidget);
+      expect(find.textContaining('v1.2.0'), findsWidgets);
+      expect(find.textContaining('v1.2.1'), findsWidgets);
+      expect(find.text('• Mejora de prueba'), findsOneWidget);
+      expect(find.text('24.0 MB'), findsOneWidget);
+      expect(find.text('Actualizar Ahora'), findsOneWidget);
+      expect(find.text('Más tarde'), findsOneWidget);
     });
 
     testWidgets('FormulaEditorDialog builds expression and returns result', (WidgetTester tester) async {
