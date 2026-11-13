@@ -120,6 +120,31 @@ void main() {
       expect(theme.floatingActionButtonTheme.foregroundColor, const Color(0xFF0E0F12));
     });
 
+    test('v1.2.1 accent, OLED surface, radius, and subject tokens propagate globally', () {
+      final theme = AppTheme.buildTheme(
+        brightness: Brightness.dark,
+        useDynamicColor: false,
+        frostedGlassIntensity: 'sutil',
+        tertiaryColorValue: 0xFF2563EB,
+        surfaceStyle: 'oled',
+        cardRadiusStyle: 'compacto',
+        subjectColorStyle: 'borde',
+        hapticsEnabled: false,
+      );
+      final tokens = theme.extension<NotasVisualTokens>()!;
+
+      expect(theme.colorScheme.surface, const Color(0xFF000000));
+      expect(tokens.accentColor, const Color(0xFF2563EB));
+      expect(tokens.surfaceStyle, 'oled');
+      expect(tokens.cardRadiusStyle, 'compacto');
+      expect(tokens.cardRadius, 12.0);
+      expect(tokens.subjectColorStyle, 'borde');
+      expect(tokens.hapticsEnabled, isFalse);
+      expect(theme.floatingActionButtonTheme.backgroundColor, const Color(0xFF2563EB));
+      expect(theme.progressIndicatorTheme.color, const Color(0xFF2563EB));
+      expect(theme.sliderTheme.activeTrackColor, const Color(0xFF2563EB));
+    });
+
     test('dynamic color backfills distinct M3 tonal surfaceContainer roles', () {
       const legacyDynamic = ColorScheme.light(
         primary: Colors.indigo,
@@ -141,35 +166,61 @@ void main() {
   });
 
   group('SettingsNotifier', () {
-    test('defaults to monochrome, intense frosted glass, and clears tertiaryColor live', () async {
+    test('defaults to monochrome, expressive v1.2.1 navigation/tokens, and updates live', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
       // Let async _loadSettings settle
       await Future<void>.delayed(Duration.zero);
 
+      final notifier = container.read(settingsProvider.notifier);
       final initial = container.read(settingsProvider);
       expect(initial.useDynamicColor, isFalse);
       expect(initial.frostedGlassIntensity, 'intenso');
       expect(initial.tertiaryColor, isNull);
+      expect(initial.bottomNavStyle, 'floating_fab');
+      expect(initial.navLabelMode, 'always');
+      expect(initial.semesterSelectorStyle, 'header');
+      expect(initial.enableHorizontalSwipe, isTrue);
+      expect(initial.surfaceStyle, 'tonal');
+      expect(initial.cardRadiusStyle, 'expresivo');
+      expect(initial.subjectColorStyle, 'mixto');
+      expect(initial.hapticsEnabled, isTrue);
 
-      await container.read(settingsProvider.notifier).setUseDynamicColor(true);
-      await container.read(settingsProvider.notifier).setFrostedGlassIntensity('sutil');
-      await container.read(settingsProvider.notifier).setTertiaryColor(0xFF3366FF);
+      await notifier.setUseDynamicColor(true);
+      await notifier.setFrostedGlassIntensity('sutil');
+      await notifier.setTertiaryColor(0xFF3366FF);
+      await notifier.setBottomNavStyle('dock');
+      await notifier.setNavLabelMode('selected');
+      await notifier.setSemesterSelectorStyle('chips');
+      await notifier.setEnableHorizontalSwipe(false);
+      await notifier.setSurfaceStyle('oled');
+      await notifier.setCardRadiusStyle('compacto');
+      await notifier.setSubjectColorStyle('borde');
+      await notifier.setHapticsEnabled(false);
 
       var updated = container.read(settingsProvider);
       expect(updated.useDynamicColor, isTrue);
       expect(updated.frostedGlassIntensity, 'sutil');
       expect(updated.tertiaryColor, 0xFF3366FF);
+      expect(updated.bottomNavStyle, 'dock');
+      expect(updated.navLabelMode, 'selected');
+      expect(updated.semesterSelectorStyle, 'chips');
+      expect(updated.enableHorizontalSwipe, isFalse);
+      expect(updated.surfaceStyle, 'oled');
+      expect(updated.cardRadiusStyle, 'compacto');
+      expect(updated.subjectColorStyle, 'borde');
+      expect(updated.hapticsEnabled, isFalse);
 
-      await container.read(settingsProvider.notifier).setTertiaryColor(null);
+      await notifier.setTertiaryColor(null);
       updated = container.read(settingsProvider);
       expect(updated.tertiaryColor, isNull);
     });
   });
 
   group('UI Smoke & Android 17 Views', () {
-    testWidgets('NotasApp renders empty state and bottom navigation bubble', (WidgetTester tester) async {
+    testWidgets('NotasApp renders empty state and floating navigation with coupled + button',
+        (WidgetTester tester) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -185,9 +236,10 @@ void main() {
       expect(find.text('Ramos'), findsOneWidget);
       expect(find.byIcon(Icons.calendar_today_rounded), findsOneWidget);
       expect(find.byIcon(Icons.event_note_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.add_rounded), findsWidgets);
     });
 
-    testWidgets('AppearanceSettingsView exposes Material You, Frosted Glass modes, and fixed grid preview',
+    testWidgets('AppearanceSettingsView exposes v1.2.1 navigation, contrast, radius, and subject style options',
         (WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(
@@ -196,20 +248,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      Future<void> tapCentered(String label) async {
+        final finder = find.text(label);
+        await tester.scrollUntilVisible(finder, 180);
+        await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+        await tester.pumpAndSettle();
+        await tester.tap(finder);
+        await tester.pumpAndSettle();
+      }
+
       expect(find.text('Colores del sistema (Material You)'), findsOneWidget);
-      expect(find.text('Intensidad de desenfoque'), findsOneWidget);
+      expect(find.text('OLED puro'), findsOneWidget);
+      expect(find.text('Color Destacado (Terciario)'), findsOneWidget);
+
+      await tapCentered('Dock clásico');
+      expect(find.text('Flotante + FAB'), findsOneWidget);
+      expect(find.text('Cabecera'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('Intensidad de desenfoque'), 180);
+      await Scrollable.ensureVisible(tester.element(find.text('Sutil')), alignment: 0.5);
+      await tester.pumpAndSettle();
       expect(find.text('Sólido'), findsOneWidget);
       expect(find.text('Sutil'), findsOneWidget);
       expect(find.text('Intenso'), findsOneWidget);
 
-      await tester.tap(find.text('Sutil'));
-      await tester.pumpAndSettle();
+      await tapCentered('Sutil');
+      await tapCentered('Cuadrícula');
+      expect(find.text('Columnas en Cuadrícula'), findsOneWidget);
+      await tapCentered('Borde');
 
-      await tester.scrollUntilVisible(find.text('Cuadrícula'), 250);
-      await tester.tap(find.text('Cuadrícula'));
+      await tester.scrollUntilVisible(find.text('Ramo 1'), 180);
+      await Scrollable.ensureVisible(tester.element(find.text('Ramo 1')), alignment: 0.5);
       await tester.pumpAndSettle();
-
-      await tester.scrollUntilVisible(find.text('Ramo 1'), 200);
       expect(find.text('Ramo 1'), findsOneWidget);
       expect(find.text('Ramo 2'), findsOneWidget);
     });
@@ -281,6 +351,7 @@ void main() {
 
       expect(find.text('NOTA ACTUAL'), findsOneWidget);
       expect(find.text('78.00'), findsWidgets);
+      expect(find.text('100% evaluado'), findsOneWidget);
       expect(find.text('Certámenes'), findsOneWidget);
       expect(find.text('Certamen 1'), findsOneWidget);
       expect(find.text('Notas'), findsOneWidget);
@@ -291,7 +362,50 @@ void main() {
       expect(find.text('Sin fecha asignada'), findsOneWidget);
     });
 
-    testWidgets('NotasApp renders active semester chips and switches bubble tabs', (WidgetTester tester) async {
+    testWidgets('NotasApp renders header semester selector pill and switches tabs smoothly',
+        (WidgetTester tester) async {
+      final semestres = [
+        Semestre(id: 1, nombre: '2026-1'),
+        Semestre(id: 2, nombre: '2026-2'),
+      ];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            semestreProvider.overrideWith(() => _FakeSemestreNotifier(semestres)),
+            ramoProvider(2).overrideWith(() => _FakeRamoNotifier([])),
+          ],
+          child: const NotasApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('2026-2'), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_arrow_down_rounded), findsOneWidget);
+
+      // Tapping the header pill opens the semester modal sheet
+      await tester.tap(find.text('2026-2'));
+      await tester.pumpAndSettle();
+      expect(find.text('2026-1'), findsOneWidget);
+      expect(find.text('Nuevo Semestre'), findsOneWidget);
+
+      // Dismiss modal sheet cleanly
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.event_note_rounded));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Agenda de Evaluaciones'), findsOneWidget);
+    });
+
+    testWidgets('NotasApp supports classic chips selector, tertiary accent live, and dock bar mode',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'semesterSelectorStyle': 'chips',
+        'bottomNavStyle': 'dock',
+        'tertiaryColor': 0xFFE11D48,
+      });
       final semestres = [
         Semestre(id: 1, nombre: '2026-1'),
         Semestre(id: 2, nombre: '2026-2'),
@@ -311,9 +425,37 @@ void main() {
       expect(find.text('2026-1'), findsOneWidget);
       expect(find.text('2026-2'), findsWidgets);
 
-      await tester.tap(find.byIcon(Icons.event_note_rounded));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Agenda de Evaluaciones'), findsOneWidget);
+      // Verify tertiary accent renders on active chip & FAB
+      final fabFinder = find.byType(FloatingActionButton);
+      expect(fabFinder, findsOneWidget);
+      final context = tester.element(fabFinder);
+      expect(Theme.of(context).floatingActionButtonTheme.backgroundColor, const Color(0xFFE11D48));
+    });
+
+    testWidgets('NotasApp horizontal PageView swipe navigates from Ramos to Horario',
+        (WidgetTester tester) async {
+      final semestres = [
+        Semestre(id: 1, nombre: '2026-2'),
+      ];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            semestreProvider.overrideWith(() => _FakeSemestreNotifier(semestres)),
+            ramoProvider(1).overrideWith(() => _FakeRamoNotifier([])),
+          ],
+          child: const NotasApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Añadir Ramo'), findsOneWidget);
+
+      await tester.drag(find.byType(PageView), const Offset(-500, 0));
+      for (int i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byTooltip('Añadir Bloque'), findsOneWidget);
     });
 
     testWidgets('FormulaEditorDialog builds expression and returns result', (WidgetTester tester) async {

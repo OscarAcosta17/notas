@@ -28,24 +28,26 @@ class NotasApp extends ConsumerWidget {
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        ThemeData themeFor(Brightness brightness, ColorScheme? dynamicScheme) {
+          return AppTheme.buildTheme(
+            brightness: brightness,
+            useDynamicColor: settings.useDynamicColor,
+            frostedGlassIntensity: settings.frostedGlassIntensity,
+            tertiaryColorValue: settings.tertiaryColor,
+            dynamicScheme: dynamicScheme,
+            surfaceStyle: settings.surfaceStyle,
+            cardRadiusStyle: settings.cardRadiusStyle,
+            subjectColorStyle: settings.subjectColorStyle,
+            hapticsEnabled: settings.hapticsEnabled,
+          );
+        }
+
         return MaterialApp(
           title: 'Gestión Universitaria',
           debugShowCheckedModeBanner: false,
           themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          theme: AppTheme.buildTheme(
-            brightness: Brightness.light,
-            useDynamicColor: settings.useDynamicColor,
-            frostedGlassIntensity: settings.frostedGlassIntensity,
-            tertiaryColorValue: settings.tertiaryColor,
-            dynamicScheme: lightDynamic,
-          ),
-          darkTheme: AppTheme.buildTheme(
-            brightness: Brightness.dark,
-            useDynamicColor: settings.useDynamicColor,
-            frostedGlassIntensity: settings.frostedGlassIntensity,
-            tertiaryColorValue: settings.tertiaryColor,
-            dynamicScheme: darkDynamic,
-          ),
+          theme: themeFor(Brightness.light, lightDynamic),
+          darkTheme: themeFor(Brightness.dark, darkDynamic),
           builder: (context, child) {
             final isDark = Theme.of(context).brightness == Brightness.dark;
             return AnnotatedRegion<SystemUiOverlayStyle>(

@@ -5,6 +5,14 @@ class SettingsState {
   final bool isDarkMode;
   final bool useDynamicColor;
   final String frostedGlassIntensity; // 'solido', 'sutil', 'intenso'
+  final String bottomNavStyle; // 'floating_fab', 'dock'
+  final String navLabelMode; // 'always', 'selected', 'icon_only'
+  final String semesterSelectorStyle; // 'header', 'chips'
+  final bool enableHorizontalSwipe;
+  final String surfaceStyle; // 'tonal', 'oled'
+  final String cardRadiusStyle; // 'compacto', 'equilibrado', 'expresivo'
+  final String subjectColorStyle; // 'mixto', 'franja', 'tinte', 'borde'
+  final bool hapticsEnabled;
   final String escalaNotas; // '1 a 7' o '0 a 100'
   final String subjectViewMode; // 'lista', 'cuadricula'
   final bool isCompactList;
@@ -14,7 +22,7 @@ class SettingsState {
   final bool notificationsEnabled;
   final int minutosAntesClase;
   final int horasAntesEvaluacion;
-  
+
   final String selectedClassSound;
   final String selectedEvalSound;
 
@@ -22,6 +30,14 @@ class SettingsState {
     required this.isDarkMode,
     required this.useDynamicColor,
     required this.frostedGlassIntensity,
+    required this.bottomNavStyle,
+    required this.navLabelMode,
+    required this.semesterSelectorStyle,
+    required this.enableHorizontalSwipe,
+    required this.surfaceStyle,
+    required this.cardRadiusStyle,
+    required this.subjectColorStyle,
+    required this.hapticsEnabled,
     required this.escalaNotas,
     required this.notificationsEnabled,
     required this.minutosAntesClase,
@@ -38,6 +54,14 @@ class SettingsState {
     bool? isDarkMode,
     bool? useDynamicColor,
     String? frostedGlassIntensity,
+    String? bottomNavStyle,
+    String? navLabelMode,
+    String? semesterSelectorStyle,
+    bool? enableHorizontalSwipe,
+    String? surfaceStyle,
+    String? cardRadiusStyle,
+    String? subjectColorStyle,
+    bool? hapticsEnabled,
     String? escalaNotas,
     bool? notificationsEnabled,
     int? minutosAntesClase,
@@ -54,6 +78,14 @@ class SettingsState {
       isDarkMode: isDarkMode ?? this.isDarkMode,
       useDynamicColor: useDynamicColor ?? this.useDynamicColor,
       frostedGlassIntensity: frostedGlassIntensity ?? this.frostedGlassIntensity,
+      bottomNavStyle: bottomNavStyle ?? this.bottomNavStyle,
+      navLabelMode: navLabelMode ?? this.navLabelMode,
+      semesterSelectorStyle: semesterSelectorStyle ?? this.semesterSelectorStyle,
+      enableHorizontalSwipe: enableHorizontalSwipe ?? this.enableHorizontalSwipe,
+      surfaceStyle: surfaceStyle ?? this.surfaceStyle,
+      cardRadiusStyle: cardRadiusStyle ?? this.cardRadiusStyle,
+      subjectColorStyle: subjectColorStyle ?? this.subjectColorStyle,
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       escalaNotas: escalaNotas ?? this.escalaNotas,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
       minutosAntesClase: minutosAntesClase ?? this.minutosAntesClase,
@@ -72,6 +104,14 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _darkModeKey = 'isDarkMode';
   static const _dynamicColorKey = 'useDynamicColor';
   static const _frostedGlassKey = 'frostedGlassIntensity';
+  static const _bottomNavStyleKey = 'bottomNavStyle';
+  static const _navLabelModeKey = 'navLabelMode';
+  static const _semesterSelectorKey = 'semesterSelectorStyle';
+  static const _horizontalSwipeKey = 'enableHorizontalSwipe';
+  static const _surfaceStyleKey = 'surfaceStyle';
+  static const _cardRadiusKey = 'cardRadiusStyle';
+  static const _subjectColorStyleKey = 'subjectColorStyle';
+  static const _hapticsKey = 'hapticsEnabled';
   static const _escalaKey = 'escalaNotas';
   static const _notifEnabledKey = 'notificationsEnabled';
   static const _minClaseKey = 'minutosAntesClase';
@@ -90,6 +130,14 @@ class SettingsNotifier extends Notifier<SettingsState> {
       isDarkMode: false,
       useDynamicColor: false,
       frostedGlassIntensity: 'intenso',
+      bottomNavStyle: 'floating_fab',
+      navLabelMode: 'always',
+      semesterSelectorStyle: 'header',
+      enableHorizontalSwipe: true,
+      surfaceStyle: 'tonal',
+      cardRadiusStyle: 'expresivo',
+      subjectColorStyle: 'mixto',
+      hapticsEnabled: true,
       escalaNotas: '0 a 100',
       notificationsEnabled: true,
       minutosAntesClase: 15,
@@ -104,61 +152,80 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    final isDarkMode = prefs.getBool(_darkModeKey) ?? false;
-    final useDynamicColor = prefs.getBool(_dynamicColorKey) ?? false;
-    final frostedGlassIntensity = prefs.getString(_frostedGlassKey) ?? 'intenso';
-    final escalaNotas = prefs.getString(_escalaKey) ?? '0 a 100';
-    final notifEnabled = prefs.getBool(_notifEnabledKey) ?? true;
-    final minClase = prefs.getInt(_minClaseKey) ?? 15;
-    final hrsEval = prefs.getInt(_hrsEvalKey) ?? 24;
-    final classSound = prefs.getString(_classSoundKey) ?? 'clase_sound';
-    final evalSound = prefs.getString(_evalSoundKey) ?? 'eval_sound';
-    final viewMode = prefs.getString(_viewModeKey) ?? 'lista';
-    final isCompact = prefs.getBool(_isCompactListKey) ?? false;
-    final gridCols = prefs.getInt(_gridCrossAxisKey) ?? 2;
-    final tColor = prefs.getInt(_tertiaryColorKey);
-    
     state = SettingsState(
-      isDarkMode: isDarkMode,
-      useDynamicColor: useDynamicColor,
-      frostedGlassIntensity: frostedGlassIntensity,
-      escalaNotas: escalaNotas,
-      notificationsEnabled: notifEnabled,
-      minutosAntesClase: minClase,
-      horasAntesEvaluacion: hrsEval,
-      selectedClassSound: classSound,
-      selectedEvalSound: evalSound,
-      subjectViewMode: viewMode,
-      isCompactList: isCompact,
-      gridCrossAxisCount: gridCols,
-      tertiaryColor: tColor,
+      isDarkMode: prefs.getBool(_darkModeKey) ?? false,
+      useDynamicColor: prefs.getBool(_dynamicColorKey) ?? false,
+      frostedGlassIntensity: prefs.getString(_frostedGlassKey) ?? 'intenso',
+      bottomNavStyle: prefs.getString(_bottomNavStyleKey) ?? 'floating_fab',
+      navLabelMode: prefs.getString(_navLabelModeKey) ?? 'always',
+      semesterSelectorStyle: prefs.getString(_semesterSelectorKey) ?? 'header',
+      enableHorizontalSwipe: prefs.getBool(_horizontalSwipeKey) ?? true,
+      surfaceStyle: prefs.getString(_surfaceStyleKey) ?? 'tonal',
+      cardRadiusStyle: prefs.getString(_cardRadiusKey) ?? 'expresivo',
+      subjectColorStyle: prefs.getString(_subjectColorStyleKey) ?? 'mixto',
+      hapticsEnabled: prefs.getBool(_hapticsKey) ?? true,
+      escalaNotas: prefs.getString(_escalaKey) ?? '0 a 100',
+      notificationsEnabled: prefs.getBool(_notifEnabledKey) ?? true,
+      minutosAntesClase: prefs.getInt(_minClaseKey) ?? 15,
+      horasAntesEvaluacion: prefs.getInt(_hrsEvalKey) ?? 24,
+      selectedClassSound: prefs.getString(_classSoundKey) ?? 'clase_sound',
+      selectedEvalSound: prefs.getString(_evalSoundKey) ?? 'eval_sound',
+      subjectViewMode: prefs.getString(_viewModeKey) ?? 'lista',
+      isCompactList: prefs.getBool(_isCompactListKey) ?? false,
+      gridCrossAxisCount: prefs.getInt(_gridCrossAxisKey) ?? 2,
+      tertiaryColor: prefs.getInt(_tertiaryColorKey),
     );
   }
 
+  Future<void> _setBoolPref(String key, bool value, SettingsState nextState) async {
+    state = nextState;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, value);
+  }
+
+  Future<void> _setStringPref(String key, String value, SettingsState nextState) async {
+    state = nextState;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
+  }
+
   Future<void> toggleDarkMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final newValue = !state.isDarkMode;
-    await prefs.setBool(_darkModeKey, newValue);
-    state = state.copyWith(isDarkMode: newValue);
+    final next = !state.isDarkMode;
+    await _setBoolPref(_darkModeKey, next, state.copyWith(isDarkMode: next));
   }
 
-  Future<void> setUseDynamicColor(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_dynamicColorKey, value);
-    state = state.copyWith(useDynamicColor: value);
-  }
+  Future<void> setUseDynamicColor(bool value) async =>
+      _setBoolPref(_dynamicColorKey, value, state.copyWith(useDynamicColor: value));
 
-  Future<void> setFrostedGlassIntensity(String intensity) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_frostedGlassKey, intensity);
-    state = state.copyWith(frostedGlassIntensity: intensity);
-  }
+  Future<void> setFrostedGlassIntensity(String intensity) async =>
+      _setStringPref(_frostedGlassKey, intensity, state.copyWith(frostedGlassIntensity: intensity));
 
-  Future<void> setEscalaNotas(String escala) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_escalaKey, escala);
-    state = state.copyWith(escalaNotas: escala);
-  }
+  Future<void> setBottomNavStyle(String style) async =>
+      _setStringPref(_bottomNavStyleKey, style, state.copyWith(bottomNavStyle: style));
+
+  Future<void> setNavLabelMode(String mode) async =>
+      _setStringPref(_navLabelModeKey, mode, state.copyWith(navLabelMode: mode));
+
+  Future<void> setSemesterSelectorStyle(String style) async =>
+      _setStringPref(_semesterSelectorKey, style, state.copyWith(semesterSelectorStyle: style));
+
+  Future<void> setEnableHorizontalSwipe(bool enabled) async =>
+      _setBoolPref(_horizontalSwipeKey, enabled, state.copyWith(enableHorizontalSwipe: enabled));
+
+  Future<void> setSurfaceStyle(String style) async =>
+      _setStringPref(_surfaceStyleKey, style, state.copyWith(surfaceStyle: style));
+
+  Future<void> setCardRadiusStyle(String style) async =>
+      _setStringPref(_cardRadiusKey, style, state.copyWith(cardRadiusStyle: style));
+
+  Future<void> setSubjectColorStyle(String style) async =>
+      _setStringPref(_subjectColorStyleKey, style, state.copyWith(subjectColorStyle: style));
+
+  Future<void> setHapticsEnabled(bool enabled) async =>
+      _setBoolPref(_hapticsKey, enabled, state.copyWith(hapticsEnabled: enabled));
+
+  Future<void> setEscalaNotas(String escala) async =>
+      _setStringPref(_escalaKey, escala, state.copyWith(escalaNotas: escala));
   
   Future<void> setMinutosAntesClase(int minutos) async {
     final prefs = await SharedPreferences.getInstance();

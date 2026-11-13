@@ -99,6 +99,13 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
       notaColor.withValues(alpha: isDark ? 0.12 : 0.07),
       isDark ? scheme.surfaceContainerLow : scheme.surfaceContainerLowest,
     );
+    double evaluado = 0.0;
+    for (final c in categorias) {
+      if (c.calcularPromedio() != null) {
+        evaluado += (c.porcentajeTotal as num).toDouble();
+      }
+    }
+    final evaluadoClamped = evaluado.clamp(0.0, 100.0);
 
     return Column(
       children: [
@@ -111,7 +118,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             decoration: BoxDecoration(
               color: heroTint,
-              borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
+              borderRadius: BorderRadius.circular((tokens.cardRadius + 6).clamp(16.0, 28.0)),
               border: Border.all(
                 color: notaColor.withValues(alpha: 0.55),
                 width: 1.8,
@@ -139,6 +146,41 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                     height: 1.1,
                   ),
                 ),
+                if (categorias.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                          child: LinearProgressIndicator(
+                            value: evaluadoClamped / 100.0,
+                            minHeight: 5,
+                            backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.75),
+                            color: tokens.accentColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: tokens.accentContainer,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                        ),
+                        child: Text(
+                          '${evaluadoClamped.toStringAsFixed(0)}% evaluado',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: tokens.onAccentContainer,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -169,7 +211,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: scheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                        borderRadius: BorderRadius.circular(tokens.cardRadius),
                         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
                       ),
                       child: Column(
@@ -263,7 +305,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                               padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
                               decoration: BoxDecoration(
                                 color: rowSurface,
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular((tokens.cardRadius - 4).clamp(10.0, 18.0)),
                                 border: Border.all(
                                   color: isDropped
                                       ? tokens.failingColor.withValues(alpha: 0.45)
@@ -352,6 +394,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
 
   Widget _buildFechasTab(BuildContext context, List<dynamic> categorias) {
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
 
     if (categorias.isEmpty) {
       return Center(
@@ -386,20 +429,20 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
           margin: const EdgeInsets.only(bottom: 10),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+            borderRadius: BorderRadius.circular(tokens.cardRadius),
             border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             leading: TonalIconBadge(
               icon: Icons.event_rounded,
-              color: ev.fecha != null ? scheme.primary : scheme.onSurfaceVariant,
+              color: ev.fecha != null ? tokens.accentColor : scheme.onSurfaceVariant,
             ),
             title: Text(ev.nombre, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: Text(
               fechaStr,
               style: TextStyle(
-                color: ev.fecha != null ? scheme.primary : scheme.onSurfaceVariant,
+                color: ev.fecha != null ? tokens.accentColor : scheme.onSurfaceVariant,
                 fontWeight: ev.fecha != null ? FontWeight.w600 : FontWeight.normal,
               ),
             ),

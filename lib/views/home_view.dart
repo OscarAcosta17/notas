@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/semestre.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
 import '../viewmodels/semestre_provider.dart';
-
+import '../viewmodels/settings_provider.dart';
 import 'add_semestre_dialog.dart';
 import 'agenda_view.dart';
+import 'edit_semestre_dialog.dart';
 import 'horario_view.dart';
 import 'semestre_detail_view.dart';
 import 'settings_view.dart';
@@ -20,198 +20,170 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
-  int _currentTab = 0; // 0 = Semestres, 1 = Agenda, 2 = Horario
+  int _currentTab = 0;
+  int? _programmaticTargetTab;
   int? _selectedSemesterId;
-  bool _isLoading = true;
+  bool _isRamoSelectionMode = false;
+  int _horarioRefreshTick = 0;
+  int _agendaRefreshTick = 0;
+
+  late final PageController _pageController;
+  final GlobalKey<SemestreDetailViewState> _semestreDetailKey = GlobalKey<SemestreDetailViewState>();
+  final GlobalKey<HorarioViewState> _horarioKey = GlobalKey<HorarioViewState>();
 
   @override
   void initState() {
     super.initState();
-    _loadSelectedSemester();
+    _pageController = PageController(initialPage: _currentTab);
   }
 
-  Future<void> _loadSelectedSemester() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedId = prefs.getInt('last_semester_id');
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectTab(int index) async {
+    if (index == _currentTab) return;
+    AppHaptics.selection(context);
+
+    setState(() {
+      _programmaticTargetTab = index;
+      _currentTab = index;
+      if (index != 0) _isRamoSelectionMode = false;
+      if (index == 1) _horarioRefreshTick++;
+      if (index == 2) _agendaRefreshTick++;
+    });
+
+    if (_pageController.hasClients) {
+      await _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
     if (mounted) {
       setState(() {
-        _selectedSemesterId = savedId;
-        _isLoading = false;
+        _programmaticTargetTab = null;
       });
     }
   }
 
-  Future<void> _selectSemester(int id) async {
-    setState(() {
-      _selectedSemesterId = id;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_semester_id', id);
-  }
-
-  Widget _buildSemestersHeader(List<Semestre> semestres) {
-    if (semestres.isEmpty) return const SizedBox.shrink();
-
-    // Ensure selected semester is valid
-    if (_selectedSemesterId == null || !semestres.any((s) => s.id == _selectedSemesterId)) {
-      _selectedSemesterId = semestres.last.id;
-      _selectSemester(_selectedSemesterId!); // Save it async
+  void _onPageChanged(int index) {
+    // Skip intermediate page notifications emitted while animateToPage hops tabs.
+    if (_programmaticTargetTab != null && index != _programmaticTargetTab) {
+      return;
     }
 
-    final scheme = Theme.of(context).colorScheme;
+    final changed = index != _currentTab;
+    if (changed) {
+      AppHaptics.selection(context);
+    }
 
-    return SizedBox(
-      height: 54,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        itemCount: semestres.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final sem = semestres[index];
-          final isSelected = sem.id == _selectedSemesterId;
+    setState(() {
+      _currentTab = index;
+      if (index != 0) _isRamoSelectionMode = false;
+      if (_programmaticTargetTab == null && changed) {
+        if (index == 1) _horarioRefreshTick++;
+        if (index == 2) _agendaRefreshTick++;
+      }
+    });
+  }
 
-          return GestureDetector(
-            onTap: () => _selectSemester(sem.id!),
-            onLongPress: () => _showSemesterOptions(sem),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? scheme.primary
-                    : scheme.surfaceContainerHigh.withValues(alpha: 0.72),
-                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-                border: Border.all(
-                  color: isSelected
-                      ? Colors.transparent
-                      : scheme.outlineVariant.withValues(alpha: 0.45),
-                ),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                sem.nombre,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? scheme.onPrimary : scheme.onSurface,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+  void _openAddSemesterDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => const AddSemestreDialog(),
     );
   }
 
-  void _showSemesterOptions(Semestre sem) {
+  void _showSemesterOptions(Semestre semestre) {
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.visualTokens;
+    AppHaptics.light(context);
 
     showExpressiveModalSheet(
       context: context,
-      builder: (sheetContext) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  sem.nombre,
-                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+      builder: (sheetCtx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Row(
+              children: [
+                TonalIconBadge(
+                  icon: Icons.school_rounded,
+                  color: tokens.accentColor,
+                  size: 42,
                 ),
-              ),
-              const SizedBox(height: 4),
-              ExpressiveGroupedSection(
-                margin: EdgeInsets.zero,
-                children: [
-                  ListTile(
-                    leading: const TonalIconBadge(icon: Icons.edit_rounded),
-                    title: const Text('Renombrar Semestre', style: TextStyle(fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      _renameSemester(sem);
-                    },
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    semestre.nombre,
+                    style: Theme.of(sheetCtx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  ListTile(
-                    leading: TonalIconBadge(
-                      icon: Icons.delete_outline_rounded,
-                      color: tokens.failingColor,
-                    ),
-                    title: Text(
-                      'Eliminar Semestre',
-                      style: TextStyle(color: tokens.failingColor, fontWeight: FontWeight.w600),
-                    ),
-                    onTap: () {
-                      Navigator.pop(sheetContext);
-                      _deleteSemester(sem);
-                    },
-                  ),
-                ],
-              ),
-              SizedBox(height: scheme.surface == Colors.transparent ? 0 : 4),
-            ],
+                ),
+              ],
+            ),
           ),
-        );
-      },
-    );
-  }
-
-  void _renameSemester(Semestre sem) {
-    final ctrl = TextEditingController(text: sem.nombre);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Renombrar Semestre'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(labelText: 'Nombre'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text.trim().isNotEmpty) {
-                sem.nombre = ctrl.text.trim();
-                ref.read(semestreProvider.notifier).actualizarSemestre(sem);
-                Navigator.pop(context);
-              }
+          ListTile(
+            leading: Icon(Icons.edit_outlined, color: scheme.onSurface),
+            title: const Text('Renombrar Semestre', style: TextStyle(fontWeight: FontWeight.w600)),
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              showDialog(
+                context: context,
+                builder: (_) => EditSemestreDialog(semestre: semestre),
+              );
             },
-            child: const Text('Guardar'),
           ),
+          ListTile(
+            leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
+            title: Text(
+              'Eliminar Semestre',
+              style: TextStyle(fontWeight: FontWeight.w600, color: scheme.error),
+            ),
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              _confirmDeleteSemester(semestre);
+            },
+          ),
+          const SizedBox(height: 8),
         ],
       ),
     );
   }
 
-  void _deleteSemester(Semestre sem) {
-    final tokens = context.visualTokens;
+  void _confirmDeleteSemester(Semestre semestre) {
+    final scheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar Semestre'),
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('¿Eliminar semestre?'),
         content: Text(
-          '¿Estás seguro de que deseas eliminar el semestre "${sem.nombre}"? Se borrarán todos los ramos, clases y evaluaciones asociados. Esta acción no se puede deshacer.',
+          'Se eliminará "${semestre.nombre}" junto con todos sus ramos, evaluaciones y horarios.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancelar'),
+          ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: tokens.failingColor,
-              foregroundColor: Colors.white,
+              backgroundColor: scheme.error,
+              foregroundColor: scheme.onError,
             ),
-            onPressed: () {
-              ref.read(semestreProvider.notifier).eliminarSemestre(sem.id!);
-              if (_selectedSemesterId == sem.id) {
-                _selectedSemesterId = null;
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              if (semestre.id != null) {
+                await ref.read(semestreProvider.notifier).eliminarSemestre(semestre.id!);
+                if (_selectedSemesterId == semestre.id && mounted) {
+                  setState(() => _selectedSemesterId = null);
+                }
               }
-              Navigator.pop(context);
             },
             child: const Text('Eliminar'),
           ),
@@ -220,182 +192,318 @@ class _HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
-  Widget _buildSemestersTab(List<Semestre> semestres) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-
+  void _showSemesterPickerSheet(List<Semestre> semestres, Semestre? activeSemestre) {
     final scheme = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final tokens = context.visualTokens;
+    AppHaptics.selection(context);
 
-    if (semestres.isEmpty) {
-      return Scaffold(
-        extendBodyBehindAppBar: true,
-        appBar: FrostedAppBar(
-          title: const Text('Mis Semestres'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: 'Configuración',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsView()),
-              ),
-            ),
-          ],
+    showExpressiveModalSheet(
+      context: context,
+      builder: (sheetCtx) => ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.65,
         ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
-                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 16, 10),
+              child: Row(
                 children: [
-                  const TonalIconBadge(icon: Icons.school_rounded, size: 64),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No hay semestres creados',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Toca el botón + para agregar tu primer semestre y comenzar a organizar tus ramos.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-                    textAlign: TextAlign.center,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Semestres',
+                          style: Theme.of(sheetCtx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          'Selecciona, renombra o administra tus períodos',
+                          style: Theme.of(sheetCtx).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-        floatingActionButton: Padding(
-          padding: EdgeInsets.only(bottom: 84 + bottomInset),
-          child: FloatingActionButton(
-            child: const Icon(Icons.add_rounded),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => const AddSemestreDialog(),
-              );
-            },
-          ),
-        ),
-      );
-    }
-
-    // Valid semester selected
-    final currentSemestre = semestres.firstWhere(
-      (s) => s.id == _selectedSemesterId,
-      orElse: () => semestres.last,
-    );
-
-    return SemestreDetailView(
-      semestre: currentSemestre,
-      showBackButton: false,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.add_box_outlined),
-          tooltip: 'Añadir Semestre',
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => const AddSemestreDialog(),
-            );
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.settings_outlined),
-          tooltip: 'Configuración',
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SettingsView()),
-            );
-          },
-        ),
-      ],
-      headerWidget: _buildSemestersHeader(semestres),
-    );
-  }
-
-  Widget _buildAgendaTab() {
-    return const AgendaView();
-  }
-
-  Widget _buildHorarioTab() {
-    if (_selectedSemesterId == null) {
-      final scheme = Theme.of(context).colorScheme;
-      return Scaffold(
-        extendBodyBehindAppBar: true,
-        appBar: const FrostedAppBar(title: Text('Horario de Clases')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
-              ),
-              child: Text(
-                'Selecciona un semestre en la pestaña de Ramos primero.',
-                style: TextStyle(color: scheme.onSurfaceVariant),
-                textAlign: TextAlign.center,
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                itemCount: semestres.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                itemBuilder: (context, idx) {
+                  final sem = semestres[idx];
+                  final isSelected = activeSemestre?.id == sem.id;
+                  return Material(
+                    color: isSelected ? tokens.accentContainer : scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(tokens.cardRadius),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(tokens.cardRadius),
+                      onTap: () {
+                        AppHaptics.selection(context);
+                        setState(() => _selectedSemesterId = sem.id);
+                        Navigator.pop(sheetCtx);
+                      },
+                      onLongPress: () {
+                        Navigator.pop(sheetCtx);
+                        _showSemesterOptions(sem);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(tokens.cardRadius),
+                          border: Border.all(
+                            color: isSelected
+                                ? tokens.accentColor.withValues(alpha: 0.45)
+                                : scheme.outlineVariant.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isSelected ? Icons.check_circle_rounded : Icons.school_outlined,
+                              color: isSelected ? tokens.accentColor : scheme.onSurfaceVariant,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                sem.nombre,
+                                style: TextStyle(
+                                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                  fontSize: 15,
+                                  color: isSelected ? tokens.onAccentContainer : scheme.onSurface,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Renombrar',
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(Icons.edit_outlined, size: 18, color: scheme.onSurfaceVariant),
+                              onPressed: () {
+                                Navigator.pop(sheetCtx);
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => EditSemestreDialog(semestre: sem),
+                                );
+                              },
+                            ),
+                            IconButton(
+                              tooltip: 'Eliminar',
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(Icons.delete_outline_rounded, size: 18, color: scheme.error),
+                              onPressed: () {
+                                Navigator.pop(sheetCtx);
+                                _confirmDeleteSemester(sem);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-          ),
-        ),
-      );
-    }
-    return HorarioView(semesterId: _selectedSemesterId!);
-  }
-
-  Widget _buildBottomBubble() {
-    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Positioned(
-      bottom: 18 + bottomInset,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: FrostedGlassSurface(
-          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-          padding: const EdgeInsets.all(6),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.12),
-              blurRadius: 22,
-              offset: const Offset(0, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(sheetCtx);
+                  _openAddSemesterDialog();
+                },
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Nuevo Semestre'),
+              ),
             ),
           ],
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsButton() {
+    return IconButton(
+      tooltip: 'Configuración',
+      icon: const Icon(Icons.settings_rounded),
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SettingsView()),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeaderTitlePill(List<Semestre> semestres, Semestre activeSemestre) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: scheme.surfaceContainerHigh.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+          onTap: () => _showSemesterPickerSheet(semestres, activeSemestre),
+          onLongPress: () => _showSemesterOptions(activeSemestre),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    activeSemestre.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
+                  color: tokens.accentColor,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSemesterChipsBar(List<Semestre> semestres, Semestre activeSemestre) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+
+    return Container(
+      height: 54,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          ...semestres.map((sem) {
+            final isSelected = sem.id == activeSemestre.id;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () {
+                  AppHaptics.selection(context);
+                  setState(() => _selectedSemesterId = sem.id);
+                },
+                onLongPress: () => _showSemesterOptions(sem),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isSelected ? tokens.accentColor : scheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                    border: isSelected
+                        ? null
+                        : Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                  ),
+                  child: Text(
+                    sem.nombre,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: isSelected ? tokens.onAccentColor : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+          Material(
+            color: tokens.accentContainer,
+            borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+              onTap: _openAddSemesterDialog,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_rounded, size: 17, color: tokens.onAccentContainer),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Nuevo',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                        color: tokens.onAccentContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptySemestersView(SettingsState settings) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final bottomGap = bottomInset + (settings.bottomNavStyle == 'dock' ? 96 : 112);
+
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: FrostedAppBar(
+        title: const Text('Mis Semestres'),
+        actions: [_buildSettingsButton()],
+      ),
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(32, 32, 32, bottomGap),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _BubbleItem(
-                icon: Icons.school_rounded,
-                label: 'Ramos',
-                isActive: _currentTab == 0,
-                onTap: () => setState(() => _currentTab = 0),
+              TonalIconBadge(
+                icon: Icons.school_outlined,
+                color: tokens.accentColor,
+                size: 84,
               ),
-              const SizedBox(width: 4),
-              _BubbleItem(
-                icon: Icons.calendar_today_rounded,
-                label: 'Horario',
-                isActive: _currentTab == 2,
-                onTap: () => setState(() => _currentTab = 2),
+              const SizedBox(height: 20),
+              Text(
+                'No hay semestres creados',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(width: 4),
-              _BubbleItem(
-                icon: Icons.event_note_rounded,
-                label: 'Agenda',
-                isActive: _currentTab == 1,
-                onTap: () => setState(() => _currentTab = 1),
+              const SizedBox(height: 8),
+              Text(
+                'Crea tu primer semestre para organizar tus ramos, horarios y fechas clave.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _openAddSemesterDialog,
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Crear Primer Semestre'),
               ),
             ],
           ),
@@ -404,95 +512,340 @@ class _HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
+  Widget _buildEmptyScheduleView() {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: FrostedAppBar(
+        title: const Text('Mi Horario'),
+        actions: [_buildSettingsButton()],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TonalIconBadge(
+                icon: Icons.calendar_today_rounded,
+                color: tokens.accentColor,
+                size: 80,
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Sin semestre activo',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Crea un semestre en la pestaña Ramos para organizar tu horario.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleCoupledFab(Semestre? activeSemestre) {
+    AppHaptics.light(context);
+    if (_currentTab == 0) {
+      if (activeSemestre == null) {
+        _openAddSemesterDialog();
+      } else {
+        _semestreDetailKey.currentState?.openAddRamoDialog();
+      }
+      return;
+    }
+    if (_currentTab == 1 && activeSemestre != null) {
+      _horarioKey.currentState?.openAddDialogForCurrentDay();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final semestres = ref.watch(semestreProvider);
+    final settings = ref.watch(settingsProvider);
+
+    Semestre? activeSemestre;
+    if (semestres.isNotEmpty) {
+      final idx = semestres.indexWhere((s) => s.id == _selectedSemesterId);
+      activeSemestre = idx != -1 ? semestres[idx] : semestres.last;
+    }
+
+    final useCoupledFab = settings.bottomNavStyle == 'floating_fab';
+    final useHeaderSelector = settings.semesterSelectorStyle == 'header';
+    final showCoupledFab = useCoupledFab &&
+        !_isRamoSelectionMode &&
+        (_currentTab == 0 || (_currentTab == 1 && activeSemestre != null));
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
-          // Main content with smooth expressive switch while preserving fresh tab loading
-          Positioned.fill(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              child: KeyedSubtree(
-                key: ValueKey<int>(_currentTab),
-                child: _currentTab == 0
-                    ? _buildSemestersTab(semestres)
-                    : _currentTab == 1
-                        ? _buildAgendaTab()
-                        : _buildHorarioTab(),
-              ),
+          PageView(
+            controller: _pageController,
+            physics: settings.enableHorizontalSwipe ? null : const NeverScrollableScrollPhysics(),
+            onPageChanged: _onPageChanged,
+            children: [
+              // Tab 0: Ramos
+              if (activeSemestre == null)
+                _buildEmptySemestersView(settings)
+              else
+                SemestreDetailView(
+                  key: _semestreDetailKey,
+                  semestre: activeSemestre,
+                  showBackButton: false,
+                  showInternalFab: !useCoupledFab,
+                  titleWidget: useHeaderSelector ? _buildHeaderTitlePill(semestres, activeSemestre) : null,
+                  headerWidget: useHeaderSelector ? null : _buildSemesterChipsBar(semestres, activeSemestre),
+                  actions: [_buildSettingsButton()],
+                  onSelectionModeChanged: (selecting) {
+                    if (_isRamoSelectionMode != selecting) {
+                      setState(() => _isRamoSelectionMode = selecting);
+                    }
+                  },
+                ),
+
+              // Tab 1: Horario
+              if (activeSemestre?.id != null)
+                HorarioView(
+                  key: _horarioKey,
+                  semesterId: activeSemestre!.id!,
+                  showInternalFab: !useCoupledFab,
+                  bottomNavStyle: settings.bottomNavStyle,
+                  disableDaySwipe: settings.enableHorizontalSwipe,
+                  refreshTick: _horarioRefreshTick,
+                )
+              else
+                _buildEmptyScheduleView(),
+
+              // Tab 2: Agenda
+              AgendaView(refreshTick: _agendaRefreshTick),
+            ],
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _ExpressiveBottomNavigation(
+              currentTab: _currentTab,
+              pageController: _pageController,
+              bottomNavStyle: settings.bottomNavStyle,
+              navLabelMode: settings.navLabelMode,
+              showCoupledFab: showCoupledFab,
+              onSelectTab: _selectTab,
+              onPressedFab: () => _handleCoupledFab(activeSemestre),
             ),
           ),
-
-          // Navigation Bubble
-          _buildBottomBubble(),
         ],
       ),
     );
   }
 }
 
-class _BubbleItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
+class _ExpressiveBottomNavigation extends StatelessWidget {
+  final int currentTab;
+  final PageController pageController;
+  final String bottomNavStyle;
+  final String navLabelMode;
+  final bool showCoupledFab;
+  final ValueChanged<int> onSelectTab;
+  final VoidCallback onPressedFab;
 
-  const _BubbleItem({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
+  const _ExpressiveBottomNavigation({
+    required this.currentTab,
+    required this.pageController,
+    required this.bottomNavStyle,
+    required this.navLabelMode,
+    required this.showCoupledFab,
+    required this.onSelectTab,
+    required this.onPressedFab,
   });
+
+  static const _items = [
+    (icon: Icons.school_rounded, label: 'Ramos'),
+    (icon: Icons.calendar_today_rounded, label: 'Horario'),
+    (icon: Icons.event_note_rounded, label: 'Agenda'),
+  ];
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final isDock = bottomNavStyle == 'dock';
+    final barHeight = navLabelMode == 'icon_only' ? 56.0 : 62.0;
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.symmetric(horizontal: isActive ? 18 : 16, vertical: 11),
-        decoration: BoxDecoration(
-          color: isActive ? scheme.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+    if (isDock) {
+      return FrostedGlassSurface(
+        borderRadius: BorderRadius.zero,
+        customBorder: Border(
+          top: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isActive ? scheme.onPrimary : scheme.onSurface.withValues(alpha: 0.65),
-              size: 22,
+        padding: EdgeInsets.fromLTRB(12, 6, 12, bottomPadding + 6),
+        child: SizedBox(
+          height: barHeight,
+          child: _buildNavTrack(context, tokens, scheme, isDock: true),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Container(
+              height: barHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.34 : 0.10),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: FrostedGlassSurface(
+                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                padding: const EdgeInsets.all(5),
+                child: _buildNavTrack(context, tokens, scheme, isDock: false),
+              ),
             ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              child: isActive
-                  ? Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          color: scheme.onPrimary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13.5,
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: showCoupledFab
+                ? Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Material(
+                      color: tokens.accentColor,
+                      borderRadius: BorderRadius.circular(19),
+                      elevation: 3,
+                      shadowColor: tokens.accentColor.withValues(alpha: 0.35),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(19),
+                        onTap: onPressedFab,
+                        child: Tooltip(
+                          message: currentTab == 0 ? 'Añadir Ramo' : 'Añadir Bloque',
+                          child: SizedBox(
+                            width: barHeight,
+                            height: barHeight,
+                            child: Icon(
+                              Icons.add_rounded,
+                              size: 28,
+                              color: tokens.onAccentColor,
+                            ),
+                          ),
                         ),
                       ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildNavTrack(
+    BuildContext context,
+    NotasVisualTokens tokens,
+    ColorScheme scheme, {
+    required bool isDock,
+  }) {
+    final pillRadius = isDock ? 16.0 : AppTheme.radiusFull;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final slotWidth = constraints.maxWidth / _items.length;
+
+        return AnimatedBuilder(
+          animation: pageController,
+          builder: (context, _) {
+            var page = currentTab.toDouble();
+            if (pageController.hasClients && pageController.position.hasViewportDimension) {
+              page = (pageController.page ?? currentTab.toDouble()).clamp(0.0, (_items.length - 1).toDouble());
+            }
+
+            return Stack(
+              children: [
+                Positioned(
+                  left: slotWidth * page,
+                  top: 0,
+                  bottom: 0,
+                  width: slotWidth,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: tokens.accentContainer,
+                      borderRadius: BorderRadius.circular(pillRadius),
+                      border: Border.all(
+                        color: tokens.accentColor.withValues(alpha: 0.25),
+                      ),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: List.generate(_items.length, (i) {
+                    final item = _items[i];
+                    final selected = currentTab == i;
+                    final showLabel = switch (navLabelMode) {
+                      'icon_only' => false,
+                      'selected' => selected,
+                      _ => true,
+                    };
+                    final activeFg = Color.lerp(tokens.onAccentContainer, tokens.accentColor, 0.35)!;
+                    final fg = selected ? activeFg : scheme.onSurfaceVariant;
+
+                    return Expanded(
+                      child: Tooltip(
+                        message: item.label,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(pillRadius),
+                          onTap: () => onSelectTab(i),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  item.icon,
+                                  size: showLabel ? 21 : 24,
+                                  color: fg,
+                                ),
+                                if (showLabel) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    item.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      height: 1.05,
+                                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                                      color: fg,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

@@ -13,25 +13,41 @@ import 'ramo_detail_view.dart';
 
 class SemestreDetailView extends ConsumerStatefulWidget {
   final Semestre semestre;
+  final Widget? titleWidget;
   final Widget? headerWidget;
   final List<Widget>? actions;
   final bool showBackButton;
+  final bool showInternalFab;
+  final ValueChanged<bool>? onSelectionModeChanged;
+
   const SemestreDetailView({
     super.key,
     required this.semestre,
+    this.titleWidget,
     this.headerWidget,
     this.actions,
     this.showBackButton = true,
+    this.showInternalFab = true,
+    this.onSelectionModeChanged,
   });
 
   @override
-  ConsumerState<SemestreDetailView> createState() => _SemestreDetailViewState();
+  SemestreDetailViewState createState() => SemestreDetailViewState();
 }
 
-class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
+class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
   final Set<int> _selectedIds = {};
 
+  void openAddRamoDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AddRamoDialog(semestreId: widget.semestre.id!),
+    );
+  }
+
   void _toggleSelection(int id) {
+    final wasSelecting = _selectedIds.isNotEmpty;
+    AppHaptics.selection(context);
     setState(() {
       if (_selectedIds.contains(id)) {
         _selectedIds.remove(id);
@@ -39,12 +55,20 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         _selectedIds.add(id);
       }
     });
+    final nowSelecting = _selectedIds.isNotEmpty;
+    if (wasSelecting != nowSelecting) {
+      widget.onSelectionModeChanged?.call(nowSelecting);
+    }
   }
 
   void _clearSelection() {
+    final wasSelecting = _selectedIds.isNotEmpty;
     setState(() {
       _selectedIds.clear();
     });
+    if (wasSelecting) {
+      widget.onSelectionModeChanged?.call(false);
+    }
   }
 
   void _deleteSelected() {
@@ -72,22 +96,30 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
     final settings = ref.watch(settingsProvider);
     final isSelectionMode = _selectedIds.isNotEmpty;
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
+    final double fabBottomPadding = settings.bottomNavStyle == 'dock'
+        ? 76 + bottomInset
+        : 84 + bottomInset;
+
     return Scaffold(
+      extendBodyBehindAppBar: true,
       backgroundColor: scheme.surface,
       appBar: isSelectionMode
-          ? AppBar(
-              backgroundColor: scheme.primaryContainer,
+          ? FrostedAppBar(
+              tintColor: tokens.accentContainer,
+              foregroundColor: tokens.onAccentContainer,
               leading: IconButton(
                 icon: const Icon(Icons.close_rounded),
                 onPressed: _clearSelection,
-                color: scheme.onPrimaryContainer,
+                color: tokens.onAccentContainer,
               ),
               title: Text(
                 '${_selectedIds.length} seleccionado(s)',
                 style: TextStyle(
-                  color: scheme.onPrimaryContainer,
+                  color: tokens.onAccentContainer,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -95,19 +127,18 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
                 if (_selectedIds.length == 1)
                   IconButton(
                     icon: const Icon(Icons.edit_rounded),
-                    color: scheme.onPrimaryContainer,
+                    color: tokens.onAccentContainer,
                     onPressed: _editSelected,
                   ),
                 IconButton(
                   icon: const Icon(Icons.delete_outline_rounded),
-                  color: scheme.onPrimaryContainer,
+                  color: tokens.onAccentContainer,
                   onPressed: _deleteSelected,
                 ),
               ],
             )
-          : AppBar(
-              title: Text(widget.semestre.nombre),
-              backgroundColor: scheme.surface,
+          : FrostedAppBar(
+              title: widget.titleWidget ?? Text(widget.semestre.nombre),
               automaticallyImplyLeading: widget.showBackButton,
               actions: [
                 if (widget.actions != null) ...widget.actions!,
@@ -115,12 +146,20 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
             ),
       body: Column(
         children: [
-          if (widget.headerWidget != null) widget.headerWidget!,
+          if (widget.headerWidget != null) ...[
+            SizedBox(height: topInset),
+            widget.headerWidget!,
+          ],
           Expanded(
             child: ramos.isEmpty
                 ? Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: EdgeInsets.fromLTRB(
+                        24,
+                        widget.headerWidget != null ? 0 : topInset,
+                        24,
+                        96 + bottomInset,
+                      ),
                       child: Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
@@ -155,23 +194,19 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
                     settings.isCompactList,
                     settings.gridCrossAxisCount,
                     isSelectionMode,
+                    widget.headerWidget != null ? 8.0 : topInset + 10.0,
                     bottomInset,
                   ),
           ),
         ],
       ),
-      floatingActionButton: isSelectionMode
+      floatingActionButton: isSelectionMode || !widget.showInternalFab
           ? null
           : Padding(
-              padding: EdgeInsets.only(bottom: 84 + bottomInset),
+              padding: EdgeInsets.only(bottom: fabBottomPadding),
               child: FloatingActionButton(
+                onPressed: openAddRamoDialog,
                 child: const Icon(Icons.add_rounded),
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AddRamoDialog(semestreId: widget.semestre.id!),
-                  );
-                },
               ),
             ),
     );
@@ -184,13 +219,14 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
     bool isCompactList,
     int gridCols,
     bool isSelectionMode,
+    double topPadding,
     double bottomInset,
   ) {
-    final bottomPadding = 112.0 + bottomInset;
+    final bottomPadding = 110.0 + bottomInset;
 
     if (mode == 'cuadricula') {
       return ReorderableGridView.builder(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
+        padding: EdgeInsets.fromLTRB(16, topPadding, 16, bottomPadding),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: gridCols,
           crossAxisSpacing: 12,
@@ -218,14 +254,14 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
     } else {
       final isCompact = isCompactList;
       return ReorderableListView.builder(
-        padding: EdgeInsets.fromLTRB(16, 10, 16, bottomPadding),
+        padding: EdgeInsets.fromLTRB(16, topPadding, 16, bottomPadding),
         itemCount: ramos.length,
         proxyDecorator: (child, index, animation) {
           return Material(
             color: Colors.transparent,
             elevation: 6,
             shadowColor: Colors.black.withValues(alpha: 0.2),
-            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+            borderRadius: BorderRadius.circular(context.visualTokens.cardRadius),
             child: child,
           );
         },
@@ -265,27 +301,41 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
   }) {
     final isSelected = _selectedIds.contains(ramo.id);
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasCustomColor = ramo.color != null;
     final Color? customColor = hasCustomColor ? Color(ramo.color!) : null;
+    final colorStyle = tokens.subjectColorStyle;
+
+    final bool showLeftStrip = customColor != null && (colorStyle == 'mixto' || colorStyle == 'franja');
+    final bool showTint = customColor != null && (colorStyle == 'mixto' || colorStyle == 'tinte');
+    final bool showBorderColor = customColor != null && colorStyle == 'borde';
+    final bool showColorDot = customColor != null && colorStyle == 'borde';
 
     final Color baseSurface = isDark ? scheme.surfaceContainerLow : scheme.surfaceContainerLowest;
-    final Color unselectedColor = customColor != null
-        ? Color.alphaBlend(customColor.withValues(alpha: isDark ? 0.08 : 0.05), baseSurface)
+    final double tintAlpha = colorStyle == 'tinte' ? (isDark ? 0.16 : 0.10) : (isDark ? 0.08 : 0.05);
+    final Color unselectedColor = showTint
+        ? Color.alphaBlend(customColor.withValues(alpha: tintAlpha), baseSurface)
         : baseSurface;
 
-    final Color cardColor = isSelected ? scheme.primaryContainer.withValues(alpha: 0.72) : unselectedColor;
+    final Color cardColor = isSelected
+        ? tokens.accentContainer.withValues(alpha: 0.8)
+        : unselectedColor;
 
     final BorderSide borderSide = isSelected
-        ? BorderSide(color: scheme.primary, width: 2)
+        ? BorderSide(color: tokens.accentColor, width: 2)
         : BorderSide(
-            color: customColor != null
-                ? customColor.withValues(alpha: isDark ? 0.35 : 0.25)
-                : scheme.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.6),
-            width: 1,
+            color: showBorderColor
+                ? customColor.withValues(alpha: isDark ? 0.72 : 0.65)
+                : (customColor != null && colorStyle != 'franja'
+                    ? customColor.withValues(alpha: isDark ? 0.35 : 0.25)
+                    : scheme.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.6)),
+            width: showBorderColor ? 1.6 : 1,
           );
 
-    final double cardRadius = isGrid && isCompact ? AppTheme.radiusMedium : AppTheme.radiusLarge;
+    final double cardRadius = isGrid && isCompact
+        ? (tokens.cardRadius - 4).clamp(10.0, 18.0)
+        : tokens.cardRadius;
     final double stripWidth = isGrid ? (gridCols == 3 ? 16 : 22) : 26;
 
     Widget content;
@@ -296,17 +346,33 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              ramo.nombre,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: isCompact ? 13.5 : 15.5,
-                color: scheme.onSurface,
-                height: 1.2,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (showColorDot) ...[
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(color: customColor, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    ramo.nombre,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: isCompact ? 13.5 : 15.5,
+                      color: scheme.onSurface,
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
             if (!isCompact) ...[
               const SizedBox(height: 8),
@@ -331,7 +397,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
               Icon(
                 isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
                 size: 20,
-                color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
+                color: isSelected ? tokens.accentColor : scheme.onSurfaceVariant,
               ),
             ],
           ],
@@ -343,13 +409,27 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           horizontal: isCompact ? 14 : 18,
           vertical: isCompact ? 2 : 8,
         ),
-        title: Text(
-          ramo.nombre,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: isCompact ? 15.5 : 17,
-            color: scheme.onSurface,
-          ),
+        title: Row(
+          children: [
+            if (showColorDot) ...[
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(color: customColor, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(
+                ramo.nombre,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: isCompact ? 15.5 : 17,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ),
+          ],
         ),
         subtitle: isCompact
             ? null
@@ -366,7 +446,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         trailing: isSelectionMode
             ? Icon(
                 isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
+                color: isSelected ? tokens.accentColor : scheme.onSurfaceVariant,
               )
             : ReorderableDragStartListener(
                 index: index,
@@ -412,7 +492,7 @@ class _SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (customColor != null)
+                if (showLeftStrip)
                   Container(
                     width: stripWidth,
                     color: customColor,

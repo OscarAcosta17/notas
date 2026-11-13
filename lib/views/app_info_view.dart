@@ -33,13 +33,14 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.2.0)'),
+        title: const Text('Novedades (v1.2.1)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• ✨ Rediseño Visual Android 17 (Material 3 Expressive): Interfaz renovada con capas tonales, formas orgánicas, pestañas tipo píldora, tarjetas agrupadas en Ajustes y transiciones nativas.\n'
-            '• 🪟 Efecto Cristal Configurable: Elige en Apariencia entre modo Sólido, Sutil o Intenso para la burbuja flotante, barras y hojas modales.\n'
-            '• 🎨 Colores del Sistema (Material You): Nuevo interruptor opcional en Apariencia para adaptar la app a la paleta de tu fondo de pantalla en Android, conservando el estilo monocromático por defecto.\n'
-            '• 🛠️ Consistencia Visual: Corregida la aplicación del color destacado en botones flotantes y el previsualizador de cuadrícula.',
+            '• 🧭 Nueva Navegación Android 17: Barra flotante estilizada con botón + acoplado, indicador tonal deslizante y opción clásica Dock en Ajustes.\n'
+            '• ↔️ Deslizamiento Horizontal Continuo: Navega suavemente entre Ramos, Horario y Agenda deslizando la pantalla (con auto-enfoque al día actual en Horario).\n'
+            '• 🎓 Selector de Semestre en Cabecera: Cambia, renombra o crea semestres desde la píldora superior para aprovechar más pantalla (modo Chips aún disponible).\n'
+            '• 🎨 Color Destacado (Terciario) Real y Apariencia Ampliada: Acento terciario aplicado globalmente a controles, navegación e insignias, más modos OLED puro, radio de tarjetas, estilo de color por ramo, etiquetas y vibración háptica.\n'
+            '• 📊 Progreso de Evaluación: Visualiza el porcentaje evaluado en el detalle de cada asignatura.',
           ),
         ),
         actions: [

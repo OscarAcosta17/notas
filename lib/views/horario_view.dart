@@ -11,34 +11,63 @@ import '../theme/expressive_widgets.dart';
 
 class HorarioView extends StatefulWidget {
   final int semesterId;
-  const HorarioView({super.key, required this.semesterId});
+  final bool showInternalFab;
+  final String bottomNavStyle;
+  final bool disableDaySwipe;
+  final int refreshTick;
+
+  const HorarioView({
+    super.key,
+    required this.semesterId,
+    this.showInternalFab = true,
+    this.bottomNavStyle = 'floating_fab',
+    this.disableDaySwipe = false,
+    this.refreshTick = 0,
+  });
 
   @override
-  State<HorarioView> createState() => _HorarioViewState();
+  HorarioViewState createState() => HorarioViewState();
 }
 
-class _HorarioViewState extends State<HorarioView> {
+class HorarioViewState extends State<HorarioView> with SingleTickerProviderStateMixin {
   bool _isLoading = true;
   List<ClaseHorario> _clases = [];
   bool _notificationsEnabled = true;
   String _semesterName = '';
   List<Map<String, dynamic>> _subjects = [];
+  late final TabController _tabController;
 
   final List<String> _dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
   @override
   void initState() {
     super.initState();
+    final weekday = DateTime.now().weekday;
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+      initialIndex: weekday <= 5 ? weekday - 1 : 0,
+    );
     _loadHorario();
     NotificationService.requestPermissions();
   }
 
   @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(HorarioView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.semesterId != widget.semesterId) {
+    if (oldWidget.semesterId != widget.semesterId || oldWidget.refreshTick != widget.refreshTick) {
       _loadHorario();
     }
+  }
+
+  void openAddDialogForCurrentDay() {
+    _showAddEditDialog(_tabController.index + 1);
   }
 
   Future<void> _loadHorario() async {
@@ -335,128 +364,153 @@ class _HorarioViewState extends State<HorarioView> {
 
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.visualTokens;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight + 56;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final double fabBottom = (widget.bottomNavStyle == 'dock' ? 76 : 92) + bottomInset;
 
-    return DefaultTabController(
-      length: 5,
-      child: Scaffold(
-        backgroundColor: scheme.surface,
-        appBar: AppBar(
-          backgroundColor: scheme.surface,
-          title: Text(
-            'Horario · $_semesterName',
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 19),
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: FrostedAppBar(
+        title: Text(
+          'Horario · $_semesterName',
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 19),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: 'Exportar Horario',
+            onPressed: _exportHorario,
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.file_upload_outlined),
-              tooltip: 'Exportar Horario',
-              onPressed: _exportHorario,
-            ),
-            IconButton(
-              icon: Icon(_notificationsEnabled ? Icons.notifications_active_rounded : Icons.notifications_off_outlined),
-              color: _notificationsEnabled ? scheme.primary : scheme.onSurfaceVariant,
-              tooltip: _notificationsEnabled ? 'Silenciar horario' : 'Activar alertas',
-              onPressed: _toggleNotifications,
-            ),
-          ],
-          bottom: const PreferredSize(
-            preferredSize: Size.fromHeight(56),
-            child: ExpressivePillTabBar(
-              labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'],
-              padding: EdgeInsets.fromLTRB(16, 4, 16, 10),
-            ),
+          IconButton(
+            icon: Icon(_notificationsEnabled ? Icons.notifications_active_rounded : Icons.notifications_off_outlined),
+            color: _notificationsEnabled ? tokens.accentColor : scheme.onSurfaceVariant,
+            tooltip: _notificationsEnabled ? 'Silenciar horario' : 'Activar alertas',
+            onPressed: _toggleNotifications,
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: ExpressivePillTabBar(
+            controller: _tabController,
+            labels: const ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'],
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
           ),
         ),
-        body: TabBarView(
-          children: List.generate(5, (index) {
-            final dia = index + 1; // 1 to 5
-            final clasesDia = _clases.where((c) => c.diaSemana == dia).toList()
-              ..sort((a, b) => a.bloque.compareTo(b.bloque));
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        physics: widget.disableDaySwipe ? const NeverScrollableScrollPhysics() : null,
+        children: List.generate(5, (index) {
+          final dia = index + 1; // 1 to 5
+          final clasesDia = _clases.where((c) => c.diaSemana == dia).toList()
+            ..sort((a, b) => a.bloque.compareTo(b.bloque));
 
-            return Stack(
-              children: [
-                if (clasesDia.isEmpty)
-                  Center(
-                    child: Text(
-                      'No hay clases este día.',
-                      style: TextStyle(color: scheme.onSurfaceVariant),
+          return Stack(
+            children: [
+              if (clasesDia.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(24, topInset, 24, 96 + bottomInset),
+                    child: Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(tokens.cardRadius),
+                        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const TonalIconBadge(icon: Icons.calendar_today_rounded, size: 48),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No hay clases este día.',
+                            style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
                     ),
-                  )
-                else
-                  ListView.builder(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 148 + bottomInset),
-                    itemCount: clasesDia.length,
-                    itemBuilder: (context, i) {
-                      final c = clasesDia[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-                          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
-                        ),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
-                          onLongPress: () => _showAddEditDialog(dia, c),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: scheme.primaryContainer,
-                                          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
-                                        ),
-                                        child: Text(
-                                          'Bloque ${c.bloque}-${c.bloque + 1} · ${_formatBlock(c.bloque)}',
-                                          style: TextStyle(
-                                            color: scheme.onPrimaryContainer,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12,
-                                            fontFeatures: const [FontFeature.tabularFigures()],
-                                          ),
-                                        ),
+                  ),
+                )
+              else
+                ListView.builder(
+                  padding: EdgeInsets.fromLTRB(16, topInset + 10, 16, 128 + bottomInset),
+                  itemCount: clasesDia.length,
+                  itemBuilder: (context, i) {
+                    final c = clasesDia[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(tokens.cardRadius),
+                        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(tokens.cardRadius),
+                        onLongPress: () {
+                          AppHaptics.selection(context);
+                          _showAddEditDialog(dia, c);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: tokens.accentContainer,
+                                        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        c.subjectName,
+                                      child: Text(
+                                        'Bloque ${c.bloque}-${c.bloque + 1} · ${_formatBlock(c.bloque)}',
                                         style: TextStyle(
+                                          color: tokens.onAccentContainer,
                                           fontWeight: FontWeight.w700,
-                                          fontSize: 17,
-                                          color: scheme.onSurface,
+                                          fontSize: 12,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Sala: ${c.sala.isEmpty ? '-' : c.sala}  ·  Paralelo: ${c.paralelo.isEmpty ? '-' : c.paralelo}',
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      c.subjectName,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 17,
+                                        color: scheme.onSurface,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Sala: ${c.sala.isEmpty ? '-' : c.sala}  ·  Paralelo: ${c.paralelo.isEmpty ? '-' : c.paralelo}',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: Icon(Icons.delete_outline_rounded, color: tokens.failingColor),
-                                  onPressed: () => _deleteClase(c),
-                                ),
-                              ],
-                            ),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete_outline_rounded, color: tokens.failingColor),
+                                onPressed: () => _deleteClase(c),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
+                ),
+              if (widget.showInternalFab)
                 Positioned(
-                  bottom: 92 + bottomInset,
+                  bottom: fabBottom,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: 'fab_add_clase_$dia',
@@ -464,10 +518,9 @@ class _HorarioViewState extends State<HorarioView> {
                     child: const Icon(Icons.add_rounded),
                   ),
                 ),
-              ],
-            );
-          }),
-        ),
+            ],
+          );
+        }),
       ),
     );
   }

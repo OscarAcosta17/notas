@@ -10,7 +10,8 @@ import '../theme/expressive_widgets.dart';
 import 'settings_view.dart';
 
 class AgendaView extends StatefulWidget {
-  const AgendaView({super.key});
+  final int refreshTick;
+  const AgendaView({super.key, this.refreshTick = 0});
 
   @override
   State<AgendaView> createState() => _AgendaViewState();
@@ -25,6 +26,14 @@ class _AgendaViewState extends State<AgendaView> {
     super.initState();
     _loadAgenda();
     NotificationService.requestPermissions();
+  }
+
+  @override
+  void didUpdateWidget(AgendaView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTick != widget.refreshTick) {
+      _loadAgenda();
+    }
   }
 
   Future<void> _loadAgenda() async {
@@ -447,7 +456,7 @@ class _AgendaViewState extends State<AgendaView> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: scheme.primary,
+                        color: tokens.accentColor,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -474,7 +483,7 @@ class _AgendaViewState extends State<AgendaView> {
                 final eval = data['eval'] as Evaluacion;
                 final subjectName = data['subjectName'] as String;
                 final isPast = eval.fecha!.isBefore(DateTime.now());
-                final accent = isPast ? tokens.failingColor : scheme.primary;
+                final accent = isPast ? tokens.failingColor : tokens.accentColor;
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -482,7 +491,7 @@ class _AgendaViewState extends State<AgendaView> {
                     color: isPast
                         ? Color.alphaBlend(tokens.failingColor.withValues(alpha: 0.05), scheme.surfaceContainerLow)
                         : scheme.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                    borderRadius: BorderRadius.circular(tokens.cardRadius),
                     border: Border.all(
                       color: isPast
                           ? tokens.failingColor.withValues(alpha: 0.35)
@@ -490,7 +499,7 @@ class _AgendaViewState extends State<AgendaView> {
                     ),
                   ),
                   child: ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusLarge)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(tokens.cardRadius)),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     leading: TonalIconBadge(icon: Icons.event_rounded, color: accent),
                     title: Text(
@@ -532,7 +541,10 @@ class _AgendaViewState extends State<AgendaView> {
                         ),
                       ],
                     ),
-                    onLongPress: () => _showActionDialog(eval, subjectName),
+                    onLongPress: () {
+                      AppHaptics.selection(context);
+                      _showActionDialog(eval, subjectName);
+                    },
                   ),
                 );
               }),

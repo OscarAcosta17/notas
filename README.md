@@ -8,6 +8,21 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.2.1] - Navegación Expressive, Color Terciario Real y Apariencia Ampliada
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.2.1.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.1/NotasApp-v1.2.1.apk)
+
+**Novedades y Características:**
+- **Nueva Navegación Flotante Android 17:** Reemplaza la antigua burbuja dividida por una **Floating Toolbar** translúcida con indicador tonal deslizante y botón `+` lateral acoplado (`Flotante + FAB`, predeterminado), además de conservar el modo clásico **Dock** configurable en Apariencia.
+- **Deslizamiento Horizontal Continuo (`PageView`):** Cambia suavemente entre **Ramos**, **Horario** (auto-enfocado al día actual) y **Agenda** deslizando horizontalmente sin interferir con los días de clase.
+- **Selector de Semestre en Cabecera:** Píldora interactiva en la barra superior (`Semestre ⌄`) para cambiar, crear, renombrar o eliminar períodos liberando espacio útil, manteniendo el modo clásico de **Chips** como alternativa.
+- **Color Destacado (Terciario) Real:** Propaga globalmente `accentColor` y `accentContainer` en `NotasVisualTokens` hacia interruptores, controles deslizantes, indicadores, insignia tonal, pestañas y FAB; corrige cancelación del selector cromático y desactiva Material You automáticamente al fijar un acento manual.
+- **Apariencia Ampliada (`Ajustes ➔ Apariencia`):** Añade selector de contraste **OLED puro (`#000000`)**, etiquetas de navegación (**Siempre / Activa / Íconos**), radio de tarjetas (**Compacto / Medio / Expresivo**), estilo de color por asignatura (**Mixto / Franja / Tinte / Borde**), vibración háptica y vistas previas en vivo.
+- **Progreso de Evaluación en Ramos:** Barra e insignia sutil `% evaluado` en la tarjeta principal de `RamoDetailView`.
+
+---
+
 ### [v1.2.0] - Rediseño Android 17 (Material 3 Expressive, Efecto Cristal y Material You)
 **Fecha**: Noviembre 2026
 

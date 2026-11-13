@@ -1,6 +1,22 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'app_theme.dart';
+
+/// Optional haptic helper respecting user appearance preferences.
+class AppHaptics {
+  static void selection(BuildContext context) {
+    if (context.visualTokens.hapticsEnabled) {
+      HapticFeedback.selectionClick();
+    }
+  }
+
+  static void light(BuildContext context) {
+    if (context.visualTokens.hapticsEnabled) {
+      HapticFeedback.lightImpact();
+    }
+  }
+}
 
 /// Adaptive Android 17 frosted-glass container responding to [NotasVisualTokens].
 class FrostedGlassSurface extends StatelessWidget {
@@ -10,6 +26,7 @@ class FrostedGlassSurface extends StatelessWidget {
   final Color? baseColor;
   final Color? borderColor;
   final double borderWidth;
+  final BoxBorder? customBorder;
   final List<BoxShadow>? boxShadow;
 
   const FrostedGlassSurface({
@@ -20,6 +37,7 @@ class FrostedGlassSurface extends StatelessWidget {
     this.baseColor,
     this.borderColor,
     this.borderWidth = 1.0,
+    this.customBorder,
     this.boxShadow,
   });
 
@@ -31,17 +49,20 @@ class FrostedGlassSurface extends StatelessWidget {
 
     final effectiveBase = baseColor ??
         (isDark ? theme.colorScheme.surfaceContainerHigh : theme.colorScheme.surfaceContainerLowest);
-    final effectiveBorder = borderColor ??
+    final effectiveBorderColor = borderColor ??
         (isDark
             ? Colors.white.withValues(alpha: tokens.glassBorderOpacity)
             : theme.colorScheme.outlineVariant.withValues(alpha: tokens.glassBorderOpacity * 2.2));
+
+    final BoxBorder? resolvedBorder = customBorder ??
+        (borderWidth > 0 ? Border.all(color: effectiveBorderColor, width: borderWidth) : null);
 
     final inner = Container(
       padding: padding,
       decoration: BoxDecoration(
         color: effectiveBase.withValues(alpha: tokens.glassOpacity),
         borderRadius: borderRadius,
-        border: borderWidth > 0 ? Border.all(color: effectiveBorder, width: borderWidth) : null,
+        border: resolvedBorder,
       ),
       child: child,
     );
@@ -76,6 +97,7 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool automaticallyImplyLeading;
   final PreferredSizeWidget? bottom;
   final Color? tintColor;
+  final Color? foregroundColor;
 
   const FrostedAppBar({
     super.key,
@@ -85,6 +107,7 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.automaticallyImplyLeading = true,
     this.bottom,
     this.tintColor,
+    this.foregroundColor,
   });
 
   @override
@@ -100,16 +123,16 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
       child: tokens.blurSigma > 0
           ? BackdropFilter(
               filter: ImageFilter.blur(sigmaX: tokens.blurSigma, sigmaY: tokens.blurSigma),
-              child: _buildBar(theme, base, tokens),
+              child: _buildBar(theme, base),
             )
-          : _buildBar(theme, base, tokens),
+          : _buildBar(theme, base),
     );
   }
 
-  Widget _buildBar(ThemeData theme, Color base, NotasVisualTokens tokens) {
+  Widget _buildBar(ThemeData theme, Color base) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: base.withValues(alpha: tokens.glassOpacity),
+        color: base.withValues(alpha: tintColor != null ? 0.92 : theme.extension<NotasVisualTokens>()?.glassOpacity ?? 0.72),
         border: Border(
           bottom: BorderSide(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),
@@ -122,6 +145,7 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
         actions: actions,
         leading: leading,
         automaticallyImplyLeading: automaticallyImplyLeading,
+        foregroundColor: foregroundColor,
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -145,12 +169,13 @@ class ExpressiveSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final tokens = context.visualTokens;
     return Padding(
       padding: padding,
       child: Text(
         title,
         style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.primary,
+          color: tokens.accentColor,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.2,
         ),
@@ -174,6 +199,7 @@ class ExpressiveGroupedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (children.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final outerRadius = context.visualTokens.cardRadius;
     final count = children.length;
 
     return Padding(
@@ -183,16 +209,16 @@ class ExpressiveGroupedSection extends StatelessWidget {
         children: List.generate(count, (index) {
           final BorderRadius radius;
           if (count == 1) {
-            radius = BorderRadius.circular(AppTheme.radiusLarge);
+            radius = BorderRadius.circular(outerRadius);
           } else if (index == 0) {
-            radius = const BorderRadius.vertical(
-              top: Radius.circular(AppTheme.radiusLarge),
-              bottom: Radius.circular(AppTheme.radiusExtraSmall),
+            radius = BorderRadius.vertical(
+              top: Radius.circular(outerRadius),
+              bottom: const Radius.circular(AppTheme.radiusExtraSmall),
             );
           } else if (index == count - 1) {
-            radius = const BorderRadius.vertical(
-              top: Radius.circular(AppTheme.radiusExtraSmall),
-              bottom: Radius.circular(AppTheme.radiusLarge),
+            radius = BorderRadius.vertical(
+              top: const Radius.circular(AppTheme.radiusExtraSmall),
+              bottom: Radius.circular(outerRadius),
             );
           } else {
             radius = BorderRadius.circular(AppTheme.radiusExtraSmall);
@@ -230,10 +256,10 @@ class TonalIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final effectiveColor = color ?? scheme.primary;
+    final tokens = context.visualTokens;
+    final effectiveColor = color ?? tokens.accentColor;
     final effectiveBg = backgroundColor ??
-        (color != null ? color!.withValues(alpha: 0.14) : scheme.surfaceContainerHighest);
+        (color != null ? color!.withValues(alpha: 0.14) : tokens.accentContainer);
 
     return Container(
       width: size,
@@ -248,23 +274,26 @@ class TonalIconBadge extends StatelessWidget {
   }
 }
 
-/// Pill-shaped tab bar that hooks into the nearest [DefaultTabController].
+/// Pill-shaped tab bar that hooks into a passed [controller] or nearest [DefaultTabController].
 class ExpressivePillTabBar extends StatelessWidget {
   final List<String> labels;
   final List<IconData>? icons;
   final EdgeInsetsGeometry padding;
+  final TabController? controller;
 
   const ExpressivePillTabBar({
     super.key,
     required this.labels,
     this.icons,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    this.controller,
   });
 
   @override
   Widget build(BuildContext context) {
-    final controller = DefaultTabController.of(context);
+    final effectiveController = controller ?? DefaultTabController.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
 
     return Padding(
       padding: padding,
@@ -276,12 +305,12 @@ class ExpressivePillTabBar extends StatelessWidget {
           border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: TabBar(
-          controller: controller,
+          controller: effectiveController,
           dividerColor: Colors.transparent,
           indicatorSize: TabBarIndicatorSize.tab,
           splashBorderRadius: BorderRadius.circular(AppTheme.radiusFull),
           indicator: BoxDecoration(
-            color: scheme.primary,
+            color: tokens.accentColor,
             borderRadius: BorderRadius.circular(AppTheme.radiusFull),
             boxShadow: [
               BoxShadow(
@@ -291,7 +320,7 @@ class ExpressivePillTabBar extends StatelessWidget {
               ),
             ],
           ),
-          labelColor: scheme.onPrimary,
+          labelColor: tokens.onAccentColor,
           unselectedLabelColor: scheme.onSurfaceVariant,
           labelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),

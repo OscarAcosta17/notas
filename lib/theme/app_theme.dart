@@ -11,6 +11,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
   final Color passingColor;
   final Color failingColor;
   final Color neutralColor;
+  final Color accentColor;
+  final Color onAccentColor;
+  final Color accentContainer;
+  final Color onAccentContainer;
+  final String surfaceStyle; // 'tonal', 'oled'
+  final String cardRadiusStyle; // 'compacto', 'equilibrado', 'expresivo'
+  final double cardRadius;
+  final String subjectColorStyle; // 'mixto', 'franja', 'tinte', 'borde'
+  final bool hapticsEnabled;
   final bool isDynamicPalette;
 
   const NotasVisualTokens({
@@ -21,6 +30,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
     required this.passingColor,
     required this.failingColor,
     required this.neutralColor,
+    required this.accentColor,
+    required this.onAccentColor,
+    required this.accentContainer,
+    required this.onAccentContainer,
+    required this.surfaceStyle,
+    required this.cardRadiusStyle,
+    required this.cardRadius,
+    required this.subjectColorStyle,
+    required this.hapticsEnabled,
     required this.isDynamicPalette,
   });
 
@@ -28,6 +46,14 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
     required Brightness brightness,
     required String frostedGlassIntensity,
     required bool isDynamicPalette,
+    Color? accentColor,
+    Color? onAccentColor,
+    Color? accentContainer,
+    Color? onAccentContainer,
+    String surfaceStyle = 'tonal',
+    String cardRadiusStyle = 'expresivo',
+    String subjectColorStyle = 'mixto',
+    bool hapticsEnabled = true,
   }) {
     final isDark = brightness == Brightness.dark;
     final double blurSigma;
@@ -53,6 +79,27 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
         break;
     }
 
+    final resolvedAccent = accentColor ?? (isDark ? const Color(0xFFF5F6FA) : const Color(0xFF0E0F13));
+    final resolvedOnAccent = onAccentColor ?? (isDark ? const Color(0xFF0E0F13) : Colors.white);
+    final resolvedAccentContainer = accentContainer ??
+        (isDark ? const Color(0xFF2A2D36) : const Color(0xFFE5E7EE));
+    final resolvedOnAccentContainer = onAccentContainer ??
+        (isDark ? const Color(0xFFF5F6FA) : const Color(0xFF0E0F13));
+
+    final double resolvedRadius;
+    switch (cardRadiusStyle) {
+      case 'compacto':
+        resolvedRadius = 12.0;
+        break;
+      case 'equilibrado':
+        resolvedRadius = 17.0;
+        break;
+      case 'expresivo':
+      default:
+        resolvedRadius = 22.0;
+        break;
+    }
+
     return NotasVisualTokens(
       frostedGlassIntensity: frostedGlassIntensity,
       blurSigma: blurSigma,
@@ -61,6 +108,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
       passingColor: isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A),
       failingColor: isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
       neutralColor: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
+      accentColor: resolvedAccent,
+      onAccentColor: resolvedOnAccent,
+      accentContainer: resolvedAccentContainer,
+      onAccentContainer: resolvedOnAccentContainer,
+      surfaceStyle: surfaceStyle,
+      cardRadiusStyle: cardRadiusStyle,
+      cardRadius: resolvedRadius,
+      subjectColorStyle: subjectColorStyle,
+      hapticsEnabled: hapticsEnabled,
       isDynamicPalette: isDynamicPalette,
     );
   }
@@ -74,6 +130,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
     Color? passingColor,
     Color? failingColor,
     Color? neutralColor,
+    Color? accentColor,
+    Color? onAccentColor,
+    Color? accentContainer,
+    Color? onAccentContainer,
+    String? surfaceStyle,
+    String? cardRadiusStyle,
+    double? cardRadius,
+    String? subjectColorStyle,
+    bool? hapticsEnabled,
     bool? isDynamicPalette,
   }) {
     return NotasVisualTokens(
@@ -84,6 +149,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
       passingColor: passingColor ?? this.passingColor,
       failingColor: failingColor ?? this.failingColor,
       neutralColor: neutralColor ?? this.neutralColor,
+      accentColor: accentColor ?? this.accentColor,
+      onAccentColor: onAccentColor ?? this.onAccentColor,
+      accentContainer: accentContainer ?? this.accentContainer,
+      onAccentContainer: onAccentContainer ?? this.onAccentContainer,
+      surfaceStyle: surfaceStyle ?? this.surfaceStyle,
+      cardRadiusStyle: cardRadiusStyle ?? this.cardRadiusStyle,
+      cardRadius: cardRadius ?? this.cardRadius,
+      subjectColorStyle: subjectColorStyle ?? this.subjectColorStyle,
+      hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       isDynamicPalette: isDynamicPalette ?? this.isDynamicPalette,
     );
   }
@@ -99,6 +173,15 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
       passingColor: Color.lerp(passingColor, other.passingColor, t) ?? passingColor,
       failingColor: Color.lerp(failingColor, other.failingColor, t) ?? failingColor,
       neutralColor: Color.lerp(neutralColor, other.neutralColor, t) ?? neutralColor,
+      accentColor: Color.lerp(accentColor, other.accentColor, t) ?? accentColor,
+      onAccentColor: Color.lerp(onAccentColor, other.onAccentColor, t) ?? onAccentColor,
+      accentContainer: Color.lerp(accentContainer, other.accentContainer, t) ?? accentContainer,
+      onAccentContainer: Color.lerp(onAccentContainer, other.onAccentContainer, t) ?? onAccentContainer,
+      surfaceStyle: t < 0.5 ? surfaceStyle : other.surfaceStyle,
+      cardRadiusStyle: t < 0.5 ? cardRadiusStyle : other.cardRadiusStyle,
+      cardRadius: cardRadius + (other.cardRadius - cardRadius) * t,
+      subjectColorStyle: t < 0.5 ? subjectColorStyle : other.subjectColorStyle,
+      hapticsEnabled: t < 0.5 ? hapticsEnabled : other.hapticsEnabled,
       isDynamicPalette: t < 0.5 ? isDynamicPalette : other.isDynamicPalette,
     );
   }
@@ -129,26 +212,58 @@ class AppTheme {
     required String frostedGlassIntensity,
     int? tertiaryColorValue,
     ColorScheme? dynamicScheme,
+    String surfaceStyle = 'tonal',
+    String cardRadiusStyle = 'expresivo',
+    String subjectColorStyle = 'mixto',
+    bool hapticsEnabled = true,
   }) {
     final isDark = brightness == Brightness.dark;
     final bool usingDynamic = useDynamicColor && dynamicScheme != null;
+    final bool isOled = surfaceStyle == 'oled';
 
-    final ColorScheme colorScheme = usingDynamic
+    ColorScheme colorScheme = usingDynamic
         ? _buildDynamicScheme(dynamicScheme, brightness)
         : _buildMonochromeScheme(brightness, tertiaryColorValue);
 
-    final Color accentColor = usingDynamic
-        ? colorScheme.primary
-        : (tertiaryColorValue != null ? Color(tertiaryColorValue) : colorScheme.primary);
+    if (isOled) {
+      colorScheme = _applyOledSurfaces(colorScheme, isDark);
+    }
 
+    final Color? customTertiary = !usingDynamic && tertiaryColorValue != null ? Color(tertiaryColorValue) : null;
+    final Color accentColor = customTertiary ?? colorScheme.primary;
     final Color onAccentColor = ThemeData.estimateBrightnessForColor(accentColor) == Brightness.dark
         ? Colors.white
         : const Color(0xFF0E0F12);
+
+    final Color accentContainer;
+    final Color onAccentContainer;
+    if (customTertiary != null) {
+      accentContainer = customTertiary.withValues(alpha: isDark ? 0.24 : 0.14);
+      final bool accentIsLight = ThemeData.estimateBrightnessForColor(customTertiary) == Brightness.light;
+      if (!isDark && accentIsLight) {
+        onAccentContainer = Color.lerp(customTertiary, const Color(0xFF111217), 0.65)!;
+      } else if (isDark && !accentIsLight) {
+        onAccentContainer = Color.lerp(customTertiary, Colors.white, 0.72)!;
+      } else {
+        onAccentContainer = customTertiary;
+      }
+    } else {
+      accentContainer = colorScheme.primaryContainer;
+      onAccentContainer = colorScheme.onPrimaryContainer;
+    }
 
     final tokens = NotasVisualTokens.from(
       brightness: brightness,
       frostedGlassIntensity: frostedGlassIntensity,
       isDynamicPalette: usingDynamic,
+      accentColor: accentColor,
+      onAccentColor: onAccentColor,
+      accentContainer: accentContainer,
+      onAccentContainer: onAccentContainer,
+      surfaceStyle: surfaceStyle,
+      cardRadiusStyle: cardRadiusStyle,
+      subjectColorStyle: subjectColorStyle,
+      hapticsEnabled: hapticsEnabled,
     );
 
     final overlayStyle = SystemUiOverlayStyle(
@@ -204,7 +319,7 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusLarge),
+          borderRadius: BorderRadius.circular(tokens.cardRadius),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -253,13 +368,13 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+          borderSide: BorderSide(color: accentColor, width: 2),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
+          backgroundColor: accentColor,
+          foregroundColor: onAccentColor,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(
@@ -270,6 +385,8 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: accentColor,
+          foregroundColor: onAccentColor,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -279,15 +396,55 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: colorScheme.primary,
+          foregroundColor: accentColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
           textStyle: const TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return onAccentColor;
+          return colorScheme.outline;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return accentColor;
+          return colorScheme.surfaceContainerHighest;
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return Colors.transparent;
+          return colorScheme.outlineVariant;
+        }),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return accentColor;
+          return Colors.transparent;
+        }),
+        checkColor: WidgetStatePropertyAll(onAccentColor),
+        side: BorderSide(color: colorScheme.outline, width: 1.5),
+      ),
+      radioTheme: RadioThemeData(
+        fillColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return accentColor;
+          return colorScheme.onSurfaceVariant;
+        }),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accentColor,
+        linearTrackColor: colorScheme.surfaceContainerHighest,
+      ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return accentContainer;
+            return Colors.transparent;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return onAccentContainer;
+            return colorScheme.onSurfaceVariant;
+          }),
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
@@ -311,11 +468,34 @@ class AppTheme {
         space: 1,
       ),
       sliderTheme: SliderThemeData(
-        activeTrackColor: colorScheme.primary,
+        activeTrackColor: accentColor,
         inactiveTrackColor: colorScheme.surfaceContainerHighest,
-        thumbColor: colorScheme.primary,
-        overlayColor: colorScheme.primary.withValues(alpha: 0.12),
+        thumbColor: accentColor,
+        overlayColor: accentColor.withValues(alpha: 0.12),
       ),
+    );
+  }
+
+  static ColorScheme _applyOledSurfaces(ColorScheme scheme, bool isDark) {
+    if (isDark) {
+      return scheme.copyWith(
+        surface: Colors.black,
+        surfaceContainerLowest: Colors.black,
+        surfaceContainerLow: const Color(0xFF0A0A0D),
+        surfaceContainer: const Color(0xFF121216),
+        surfaceContainerHigh: const Color(0xFF1A1A20),
+        surfaceContainerHighest: const Color(0xFF23232A),
+        outlineVariant: const Color(0xFF2E2E38),
+      );
+    }
+    return scheme.copyWith(
+      surface: Colors.white,
+      surfaceContainerLowest: Colors.white,
+      surfaceContainerLow: const Color(0xFFF6F7FA),
+      surfaceContainer: const Color(0xFFEEEFF4),
+      surfaceContainerHigh: const Color(0xFFE5E7EE),
+      surfaceContainerHighest: const Color(0xFFDCE0E9),
+      outlineVariant: const Color(0xFFC5C9D4),
     );
   }
 
