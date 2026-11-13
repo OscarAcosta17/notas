@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../viewmodels/semestre_provider.dart';
 import '../models/semestre.dart';
+import '../viewmodels/semestre_provider.dart';
 
 class AddSemestreDialog extends ConsumerStatefulWidget {
   const AddSemestreDialog({super.key});
@@ -12,6 +12,12 @@ class AddSemestreDialog extends ConsumerStatefulWidget {
 
 class _AddSemestreDialogState extends ConsumerState<AddSemestreDialog> {
   final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   void _submit() {
     final text = _controller.text.trim();
@@ -24,33 +30,21 @@ class _AddSemestreDialogState extends ConsumerState<AddSemestreDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      title: Text('Nuevo Semestre', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+      title: const Text('Nuevo Semestre'),
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: InputDecoration(
+        decoration: const InputDecoration(
           hintText: 'Ej. Primer Semestre 2026',
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2),
-          ),
         ),
         onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          child: const Text('Cancelar'),
         ),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
+        FilledButton(
           onPressed: _submit,
           child: const Text('Crear'),
         ),

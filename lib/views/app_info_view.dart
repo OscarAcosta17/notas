@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/updater_service.dart';
+import '../theme/app_theme.dart';
+import '../theme/expressive_widgets.dart';
 
 class AppInfoView extends StatefulWidget {
   const AppInfoView({super.key});
@@ -20,29 +22,31 @@ class _AppInfoViewState extends State<AppInfoView> {
 
   Future<void> _loadVersion() async {
     final info = await PackageInfo.fromPlatform();
-    setState(() {
-      _version = 'v${info.version}+${info.buildNumber}';
-    });
+    if (mounted) {
+      setState(() {
+        _version = 'v${info.version}+${info.buildNumber}';
+      });
+    }
   }
 
   void _showNovedades() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.1.9)'),
+        title: const Text('Novedades (v1.2.0)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• 🧮 Nueva Calculadora de Fórmulas: Un editor inmersivo visual estilo Photomath para crear fórmulas personalizadas con botones interactivos.\n'
-            '• ⚙️ Mínimo y Máximo: Ahora puedes usar las funciones min() y max() dentro de tus promedios personalizados.\n'
-            '• 🎨 Rediseño de Ramos: Hemos mejorado la apariencia de la lista de ramos. Ahora el color de cada asignatura se presenta en una elegante franja lateral, dándole un toque mucho más moderno.\n'
-            '• 📏 Eliminar peor nota y configuraciones avanzadas: Mejor integración del sistema de promedios geométricos y lógicas de eliminación de notas.',
+            '• ✨ Rediseño Visual Android 17 (Material 3 Expressive): Interfaz renovada con capas tonales, formas orgánicas, pestañas tipo píldora, tarjetas agrupadas en Ajustes y transiciones nativas.\n'
+            '• 🪟 Efecto Cristal Configurable: Elige en Apariencia entre modo Sólido, Sutil o Intenso para la burbuja flotante, barras y hojas modales.\n'
+            '• 🎨 Colores del Sistema (Material You): Nuevo interruptor opcional en Apariencia para adaptar la app a la paleta de tu fondo de pantalla en Android, conservando el estilo monocromático por defecto.\n'
+            '• 🛠️ Consistencia Visual: Corregida la aplicación del color destacado en botones flotantes y el previsualizador de cuadrícula.',
           ),
         ),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cerrar'),
-          )
+          ),
         ],
       ),
     );
@@ -61,10 +65,10 @@ class _AppInfoViewState extends State<AppInfoView> {
           ),
         ),
         actions: [
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cerrar'),
-          )
+          ),
         ],
       ),
     );
@@ -72,74 +76,98 @@ class _AppInfoViewState extends State<AppInfoView> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Acerca de Notas'),
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: const FrostedAppBar(
+        title: Text('Acerca de Notas'),
       ),
       body: ListView(
+        padding: EdgeInsets.fromLTRB(0, topInset + 12, 0, 28 + bottomInset),
         children: [
-          const SizedBox(height: 20),
-          Center(
-            child: Icon(
-              Icons.book,
-              size: 80,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Center(
-            child: Text(
-              'NotasApp',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-          ),
-          Center(
-            child: Text(
-              _version,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
+                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+              ),
+              child: Column(
+                children: [
+                  const TonalIconBadge(icon: Icons.book_rounded, size: 72),
+                  const SizedBox(height: 14),
+                  Text(
+                    'NotasApp',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                    ),
+                    child: Text(
+                      _version,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 30),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.system_update),
-            title: const Text('Buscar Actualizaciones'),
-            subtitle: const Text('Verifica si hay una nueva versión disponible'),
-            onTap: () {
-              UpdaterService.checkForUpdates(context);
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.new_releases),
-            title: const Text('Novedades'),
-            subtitle: const Text('Descubre qué ha cambiado en esta versión'),
-            onTap: _showNovedades,
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.privacy_tip),
-            title: const Text('Política de Privacidad'),
-            onTap: _showPrivacyPolicy,
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.article),
-            title: const Text('Licencias'),
-            subtitle: const Text('Software de terceros y dependencias'),
-            onTap: () {
-              showLicensePage(
-                context: context,
-                applicationName: 'NotasApp',
-                applicationVersion: _version,
-                applicationIcon: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Icon(Icons.book, size: 64, color: Theme.of(context).colorScheme.primary),
-                ),
-              );
-            },
+          const ExpressiveSectionHeader(title: 'Información y Actualizaciones'),
+          ExpressiveGroupedSection(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.system_update_rounded),
+                title: const Text('Buscar Actualizaciones', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Verifica si hay una nueva versión disponible'),
+                onTap: () {
+                  UpdaterService.checkForUpdates(context);
+                },
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.new_releases_rounded),
+                title: const Text('Novedades', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Descubre qué ha cambiado en esta versión'),
+                onTap: _showNovedades,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.privacy_tip_rounded),
+                title: const Text('Política de Privacidad', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: _showPrivacyPolicy,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.article_rounded),
+                title: const Text('Licencias', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Software de terceros y dependencias'),
+                onTap: () {
+                  showLicensePage(
+                    context: context,
+                    applicationName: 'NotasApp',
+                    applicationVersion: _version,
+                    applicationIcon: const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: TonalIconBadge(icon: Icons.book_rounded, size: 56),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

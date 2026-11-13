@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/ramo.dart';
 import '../models/evaluacion.dart';
-
-import '../viewmodels/categoria_provider.dart';
-import '../services/notification_service.dart';
+import '../models/ramo.dart';
 import '../services/home_widget_service.dart';
+import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
+import '../theme/expressive_widgets.dart';
+import '../viewmodels/categoria_provider.dart';
 
 import 'add_categoria_dialog.dart';
 import 'add_evaluacion_dialog.dart';
@@ -26,17 +27,41 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
   Widget build(BuildContext context) {
     final categorias = ref.watch(categoriaProvider(widget.ramo.id!));
     widget.ramo.categorias = categorias;
-    
+    final scheme = Theme.of(context).colorScheme;
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: scheme.surface,
         appBar: AppBar(
-          title: Text(widget.ramo.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Notas', icon: Icon(Icons.calculate)),
-              Tab(text: 'Fechas', icon: Icon(Icons.calendar_month)),
+          backgroundColor: scheme.surface,
+          title: Row(
+            children: [
+              if (widget.ramo.color != null) ...[
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Color(widget.ramo.color!),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  widget.ramo.nombre,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
+          ),
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(58),
+            child: ExpressivePillTabBar(
+              labels: ['Notas', 'Fechas'],
+              icons: [Icons.calculate_rounded, Icons.calendar_month_rounded],
+            ),
           ),
         ),
         body: TabBarView(
@@ -46,7 +71,8 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
           ],
         ),
         floatingActionButton: FloatingActionButton(
-          child: const Icon(Icons.create_new_folder),
+          tooltip: 'Añadir grupo de evaluación',
+          child: const Icon(Icons.create_new_folder_rounded),
           onPressed: () {
             showDialog(
               context: context,
@@ -60,144 +86,261 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
 
   Widget _buildNotasTab(BuildContext context, List<dynamic> categorias) {
     final notaActual = widget.ramo.calcularNotaActual();
-    Color notaColor = notaActual >= widget.ramo.notaAprobacion ? Colors.green.shade600 : Colors.red.shade600;
-    if (notaActual == 0.0) notaColor = Colors.grey;
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Color notaColor = notaActual >= widget.ramo.notaAprobacion
+        ? tokens.passingColor
+        : tokens.failingColor;
+    if (notaActual == 0.0) notaColor = tokens.neutralColor;
+
+    final heroTint = Color.alphaBlend(
+      notaColor.withValues(alpha: isDark ? 0.12 : 0.07),
+      isDark ? scheme.surfaceContainerLow : scheme.surfaceContainerLowest,
+    );
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          width: double.infinity,
-          child: Card(
-            color: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: notaColor, width: 2)),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  const Text('Nota Actual', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Text(notaActual.toStringAsFixed(2), style: TextStyle(color: notaColor, fontSize: 28, fontWeight: FontWeight.bold)),
-                ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: BoxDecoration(
+              color: heroTint,
+              borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
+              border: Border.all(
+                color: notaColor.withValues(alpha: 0.55),
+                width: 1.8,
               ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'NOTA ACTUAL',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.0,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  notaActual.toStringAsFixed(2),
+                  style: TextStyle(
+                    color: notaColor,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w800,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    height: 1.1,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
-        const Divider(),
         Expanded(
           child: categorias.isEmpty
-              ? const Center(child: Text('No hay grupos de evaluaciones creados.', style: TextStyle(color: Colors.grey)))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'No hay grupos de evaluaciones creados.',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                )
               : ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                   itemCount: categorias.length,
                   itemBuilder: (context, index) {
                     final cat = categorias[index];
                     final promedioCat = cat.calcularPromedio() ?? 0.0;
-                    
-                    return Card(
-                      elevation: 2,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    "${cat.nombre} (${cat.porcentajeTotal}%)",
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                                  ),
+                    final bool catFailed = cat.notaAprobacion != null && promedioCat < cat.notaAprobacion!;
+                    final Color catPromColor = catFailed ? tokens.failingColor : tokens.passingColor;
+                    final rowSurface = isDark ? scheme.surfaceContainer : scheme.surfaceContainerLowest;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text(
+                                      cat.nombre,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 17.5,
+                                        color: scheme.onSurface,
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: scheme.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                                      ),
+                                      child: Text(
+                                        '${cat.porcentajeTotal % 1 == 0 ? cat.porcentajeTotal.toInt() : cat.porcentajeTotal}%',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Text(
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: catPromColor.withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                                ),
+                                child: Text(
                                   promedioCat.toStringAsFixed(2),
                                   style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: (cat.notaAprobacion != null && promedioCat < cat.notaAprobacion!) ? Colors.red : Colors.green,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: catPromColor,
+                                    fontFeatures: const [FontFeature.tabularFigures()],
                                   ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 20),
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => EditCategoriaDialog(ramoId: widget.ramo.id!, categoria: cat),
-                                    );
-                                  },
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.grey, size: 20),
-                                  onPressed: () {
-                                    ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarCategoria(cat.id!);
-                                  },
-                                )
-                              ],
+                              ),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: Icon(Icons.edit_outlined, color: scheme.onSurfaceVariant, size: 20),
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => EditCategoriaDialog(
+                                      ramoId: widget.ramo.id!,
+                                      categoria: cat,
+                                    ),
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete_outline_rounded, color: scheme.onSurfaceVariant, size: 20),
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () {
+                                  ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarCategoria(cat.id!);
+                                },
+                              ),
+                            ],
+                          ),
+                          if (cat.notaAprobacion != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Requiere mínimo: ${cat.notaAprobacion}',
+                              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
                             ),
-                            if (cat.notaAprobacion != null)
-                              Text('Requiere mínimo: ${cat.notaAprobacion}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                            const SizedBox(height: 12),
-                            ...cat.evaluaciones.map((ev) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: InkWell(
-                                        onLongPress: () {
-                                          showDialog(
-                                            context: context,
-                                            builder: (context) => EditEvaluacionDialog(ramoId: widget.ramo.id!, evaluacion: ev),
-                                          );
-                                        },
+                          ],
+                          const SizedBox(height: 10),
+                          ...cat.evaluaciones.map((ev) {
+                            final isDropped = cat.droppedEvaluacionId == ev.id;
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                              decoration: BoxDecoration(
+                                color: rowSurface,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: isDropped
+                                      ? tokens.failingColor.withValues(alpha: 0.45)
+                                      : scheme.outlineVariant.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(10),
+                                      onLongPress: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => EditEvaluacionDialog(
+                                            ramoId: widget.ramo.id!,
+                                            evaluacion: ev,
+                                          ),
+                                        );
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 4),
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               ev.nombre,
                                               style: TextStyle(
-                                                color: cat.droppedEvaluacionId == ev.id ? Colors.red : Theme.of(context).colorScheme.onSurface,
-                                                decoration: cat.droppedEvaluacionId == ev.id ? TextDecoration.lineThrough : null,
+                                                fontWeight: FontWeight.w600,
+                                                color: isDropped ? tokens.failingColor : scheme.onSurface,
+                                                decoration: isDropped ? TextDecoration.lineThrough : null,
                                               ),
                                             ),
                                             if (ev.porcentajePeso != null)
-                                              Text('Peso: ${ev.porcentajePeso}%', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                              Text(
+                                                'Peso: ${ev.porcentajePeso}%',
+                                                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                                              ),
                                           ],
                                         ),
                                       ),
                                     ),
-                                    SizedBox(
-                                      width: 80,
-                                      child: GradeInputField(ramoId: widget.ramo.id!, evaluacion: ev),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.close, color: Colors.grey, size: 18),
-                                      onPressed: () {
-                                        ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarEvaluacion(ev.id!);
-                                      },
-                                    )
-                                  ],
-                                ),
-                              );
-                            }),
-                            const SizedBox(height: 8),
-                            Center(
-                              child: TextButton.icon(
-                                onPressed: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (context) => AddEvaluacionDialog(categoriaId: cat.id!, ramoId: widget.ramo.id!),
-                                  );
-                                },
-                                icon: const Icon(Icons.add),
-                                label: const Text('Añadir Evaluación'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 82,
+                                    child: GradeInputField(ramoId: widget.ramo.id!, evaluacion: ev),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.close_rounded, color: scheme.onSurfaceVariant, size: 18),
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () {
+                                      ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarEvaluacion(ev.id!);
+                                    },
+                                  ),
+                                ],
                               ),
-                            )
-                          ],
-                        ),
+                            );
+                          }),
+                          const SizedBox(height: 4),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.tonalIcon(
+                              onPressed: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AddEvaluacionDialog(
+                                    categoriaId: cat.id!,
+                                    ramoId: widget.ramo.id!,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Añadir Evaluación'),
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -208,11 +351,18 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
   }
 
   Widget _buildFechasTab(BuildContext context, List<dynamic> categorias) {
+    final scheme = Theme.of(context).colorScheme;
+
     if (categorias.isEmpty) {
-      return const Center(child: Text('Agrega evaluaciones primero en la pestaña Notas.', style: TextStyle(color: Colors.grey)));
+      return Center(
+        child: Text(
+          'Agrega evaluaciones primero en la pestaña Notas.',
+          style: TextStyle(color: scheme.onSurfaceVariant),
+        ),
+      );
     }
 
-    List<Evaluacion> todas = [];
+    final List<Evaluacion> todas = [];
     for (var cat in categorias) {
       todas.addAll(cat.evaluaciones);
     }
@@ -224,23 +374,37 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
     });
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       itemCount: todas.length,
       itemBuilder: (context, index) {
         final ev = todas[index];
-        final fechaStr = ev.fecha != null 
-          ? "${ev.fecha!.day}/${ev.fecha!.month}/${ev.fecha!.year} ${ev.fecha!.hour.toString().padLeft(2, '0')}:${ev.fecha!.minute.toString().padLeft(2, '0')}" 
-          : "Sin fecha asignada";
+        final fechaStr = ev.fecha != null
+            ? "${ev.fecha!.day}/${ev.fecha!.month}/${ev.fecha!.year} ${ev.fecha!.hour.toString().padLeft(2, '0')}:${ev.fecha!.minute.toString().padLeft(2, '0')}"
+            : "Sin fecha asignada";
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+            border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+          ),
           child: ListTile(
-            leading: const Icon(Icons.event),
-            title: Text(ev.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(fechaStr),
-            trailing: IconButton(
-              icon: const Icon(Icons.edit_calendar),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            leading: TonalIconBadge(
+              icon: Icons.event_rounded,
+              color: ev.fecha != null ? scheme.primary : scheme.onSurfaceVariant,
+            ),
+            title: Text(ev.nombre, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(
+              fechaStr,
+              style: TextStyle(
+                color: ev.fecha != null ? scheme.primary : scheme.onSurfaceVariant,
+                fontWeight: ev.fecha != null ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            trailing: IconButton.filledTonal(
+              icon: const Icon(Icons.edit_calendar_rounded, size: 20),
               onPressed: () async {
                 DateTime? pickedDate = await showDatePicker(
                   context: context,
@@ -255,19 +419,24 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                   );
                   if (pickedTime != null) {
                     final finalDateTime = DateTime(
-                      pickedDate.year, pickedDate.month, pickedDate.day, 
-                      pickedTime.hour, pickedTime.minute
+                      pickedDate.year,
+                      pickedDate.month,
+                      pickedDate.day,
+                      pickedTime.hour,
+                      pickedTime.minute,
                     );
                     ev.fecha = finalDateTime;
                     await ref.read(categoriaProvider(widget.ramo.id!).notifier).actualizarEvaluacion(ev);
-                    
+
                     // Notificación local 1 día antes
                     NotificationService.scheduleEvaluationReminder(ev, widget.ramo.nombre);
                     // Actualizar Widget
                     HomeWidgetService.updateWidget();
-                    
+
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fecha y recordatorio guardados')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Fecha y recordatorio guardados')),
+                      );
                     }
                   }
                 }

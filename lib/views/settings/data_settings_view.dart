@@ -1,11 +1,12 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
-import '../../viewmodels/settings_provider.dart';
 import '../../services/database_helper.dart';
+import '../../theme/expressive_widgets.dart';
+import '../../viewmodels/settings_provider.dart';
 
 class DataSettingsView extends ConsumerStatefulWidget {
   const DataSettingsView({super.key});
@@ -34,18 +35,22 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
           }
         });
       }
-      
-      setState(() {
-        if (totalSize < 1024) {
-          _cacheSizeStr = '$totalSize B';
-        } else if (totalSize < 1024 * 1024) {
-          _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
-        } else {
-          _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(2)} MB';
-        }
-      });
+
+      if (mounted) {
+        setState(() {
+          if (totalSize < 1024) {
+            _cacheSizeStr = '$totalSize B';
+          } else if (totalSize < 1024 * 1024) {
+            _cacheSizeStr = '${(totalSize / 1024).toStringAsFixed(1)} KB';
+          } else {
+            _cacheSizeStr = '${(totalSize / (1024 * 1024)).toStringAsFixed(2)} MB';
+          }
+        });
+      }
     } catch (e) {
-      setState(() => _cacheSizeStr = 'Desconocido');
+      if (mounted) {
+        setState(() => _cacheSizeStr = 'Desconocido');
+      }
     }
   }
 
@@ -118,62 +123,72 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final scheme = Theme.of(context).colorScheme;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Datos y Almacenamiento'),
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: const FrostedAppBar(
+        title: Text('Datos y Almacenamiento'),
       ),
       body: ListView(
+        padding: EdgeInsets.fromLTRB(0, topInset + 8, 0, 28 + bottomInset),
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Sistema de Notas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          RadioListTile<String>(
-            title: const Text('Escala 1 al 7'),
-            value: '1 a 7',
+          const ExpressiveSectionHeader(title: 'Sistema de Notas'),
+          RadioGroup<String>(
             groupValue: settings.escalaNotas,
-            activeColor: Theme.of(context).colorScheme.primary,
             onChanged: (String? value) {
-              if (value != null) ref.read(settingsProvider.notifier).setEscalaNotas(value);
+              if (value != null) {
+                ref.read(settingsProvider.notifier).setEscalaNotas(value);
+              }
             },
+            child: const ExpressiveGroupedSection(
+              children: [
+                RadioListTile<String>(
+                  title: Text('Escala 1 al 7', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text('Nota mínima sugerida: 4.0'),
+                  value: '1 a 7',
+                ),
+                RadioListTile<String>(
+                  title: Text('Escala 0 al 100', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text('Nota mínima sugerida: 55.0'),
+                  value: '0 a 100',
+                ),
+              ],
+            ),
           ),
-          RadioListTile<String>(
-            title: const Text('Escala 0 al 100'),
-            value: '0 a 100',
-            groupValue: settings.escalaNotas,
-            activeColor: Theme.of(context).colorScheme.primary,
-            onChanged: (String? value) {
-              if (value != null) ref.read(settingsProvider.notifier).setEscalaNotas(value);
-            },
+          const ExpressiveSectionHeader(title: 'Copias de Seguridad'),
+          ExpressiveGroupedSection(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.upload_file_rounded),
+                title: const Text('Exportar Datos', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Guardar una copia de seguridad en Descargas'),
+                onTap: _exportBackup,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.download_rounded),
+                title: const Text('Importar Datos', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Restaurar desde una copia previa'),
+                onTap: _importBackup,
+              ),
+            ],
           ),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Copias de Seguridad', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.upload_file),
-            title: const Text('Exportar Datos'),
-            subtitle: const Text('Guardar una copia de seguridad en Descargas'),
-            onTap: _exportBackup,
-          ),
-          ListTile(
-            leading: const Icon(Icons.download),
-            title: const Text('Importar Datos'),
-            subtitle: const Text('Restaurar desde una copia previa'),
-            onTap: _importBackup,
-          ),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Text('Almacenamiento', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cleaning_services),
-            title: const Text('Limpiar Caché'),
-            subtitle: Text('Archivos temporales (imágenes, actualizadores): $_cacheSizeStr'),
-            onTap: _clearCache,
+          const ExpressiveSectionHeader(title: 'Almacenamiento'),
+          ExpressiveGroupedSection(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.cleaning_services_rounded),
+                title: const Text('Limpiar Caché', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('Archivos temporales (imágenes, actualizadores): $_cacheSizeStr'),
+                onTap: _clearCache,
+              ),
+            ],
           ),
         ],
       ),

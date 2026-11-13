@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/evaluacion.dart';
+import '../theme/app_theme.dart';
 import '../viewmodels/categoria_provider.dart';
 
 class EditEvaluacionDialog extends ConsumerStatefulWidget {
@@ -24,6 +25,13 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
     _pesoController = TextEditingController(text: widget.evaluacion.porcentajePeso?.toString() ?? '');
   }
 
+  @override
+  void dispose() {
+    _nombreController.dispose();
+    _pesoController.dispose();
+    super.dispose();
+  }
+
   void _submit() {
     final nombre = _nombreController.text.trim();
     final pesoStr = _pesoController.text.trim();
@@ -41,32 +49,31 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge)),
+      backgroundColor: scheme.surfaceContainerHigh,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Editar Evaluación', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Theme.of(context).colorScheme.onSurface)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _nombreController,
-              decoration: InputDecoration(
-                labelText: 'Nombre',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            Text(
+              'Editar Evaluación',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 21, color: scheme.onSurface),
             ),
             const SizedBox(height: 16),
             TextField(
+              controller: _nombreController,
+              decoration: const InputDecoration(labelText: 'Nombre'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
               controller: _pesoController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Peso de la nota (%)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              decoration: const InputDecoration(labelText: 'Peso de la nota (%)'),
             ),
             const SizedBox(height: 20),
             Row(
@@ -74,19 +81,15 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                  child: const Text('Cancelar'),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  ),
+                FilledButton(
                   onPressed: _submit,
                   child: const Text('Guardar'),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),

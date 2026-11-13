@@ -1,13 +1,17 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'views/home_view.dart';
-import 'viewmodels/settings_provider.dart';
-import 'services/updater_service.dart';
 import 'services/notification_service.dart';
+import 'services/updater_service.dart';
 import 'services/widget_service.dart';
+import 'theme/app_theme.dart';
+import 'viewmodels/settings_provider.dart';
+import 'views/home_view.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await NotificationService.initialize();
   WidgetService.updateAgendaWidget();
   WidgetService.updateHorarioWidget();
@@ -22,57 +26,44 @@ class NotasApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
 
-    return MaterialApp(
-      title: 'Gestión Universitaria',
-      debugShowCheckedModeBanner: false,
-      themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.black,
-          brightness: Brightness.light,
-          primary: Colors.black,
-          secondary: Colors.grey.shade800,
-          surface: Colors.white,
-        ).copyWith(
-          tertiary: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : null,
-          onTertiary: Colors.white,
-          tertiaryContainer: settings.tertiaryColor != null ? Color(settings.tertiaryColor!).withOpacity(0.2) : null,
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : Colors.black,
-          foregroundColor: Colors.white,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.white,
-          brightness: Brightness.dark,
-          primary: Colors.white,
-          secondary: Colors.grey.shade400,
-          surface: const Color(0xFF121212),
-        ).copyWith(
-          tertiary: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : null,
-          onTertiary: Colors.white,
-          tertiaryContainer: settings.tertiaryColor != null ? Color(settings.tertiaryColor!).withOpacity(0.2) : null,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF121212),
-          foregroundColor: Colors.white,
-        ),
-        dialogTheme: const DialogThemeData(
-          backgroundColor: Color(0xFF1E1E1E),
-          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-          contentTextStyle: TextStyle(color: Colors.white70, fontSize: 16),
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: settings.tertiaryColor != null ? Color(settings.tertiaryColor!) : Colors.white,
-          foregroundColor: Colors.black,
-        ),
-      ),
-      home: const HomeView(),
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        return MaterialApp(
+          title: 'Gestión Universitaria',
+          debugShowCheckedModeBanner: false,
+          themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          theme: AppTheme.buildTheme(
+            brightness: Brightness.light,
+            useDynamicColor: settings.useDynamicColor,
+            frostedGlassIntensity: settings.frostedGlassIntensity,
+            tertiaryColorValue: settings.tertiaryColor,
+            dynamicScheme: lightDynamic,
+          ),
+          darkTheme: AppTheme.buildTheme(
+            brightness: Brightness.dark,
+            useDynamicColor: settings.useDynamicColor,
+            frostedGlassIntensity: settings.frostedGlassIntensity,
+            tertiaryColorValue: settings.tertiaryColor,
+            dynamicScheme: darkDynamic,
+          ),
+          builder: (context, child) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+                statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarDividerColor: Colors.transparent,
+                systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+                systemNavigationBarContrastEnforced: false,
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+          home: const HomeView(),
+        );
+      },
     );
   }
 }

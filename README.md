@@ -8,6 +8,17 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.2.0] - Rediseño Android 17 (Material 3 Expressive, Efecto Cristal y Material You)
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.2.0.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.0/NotasApp-v1.2.0.apk)
+
+**Novedades y Características:**
+- **Estética Android 17 (Material 3 Expressive):** Interfaz renovada con jerarquía tonal de superficies, tipografía con cifras tabulares en promedios, pestañas en píldora, navegación *edge-to-edge* y transiciones predictivas al retroceder.
+- **Efecto Cristal Configurable:** Nueva burbuja de navegación inferior y barras superiores translúcidas con desenfoque (`BackdropFilter`). Elige en **Ajustes ➔ Apariencia** entre 3 niveles (*Sólido*, *Sutil* e *Intenso*).
+- **Material You Opcional:** Nuevo interruptor **Colores del sistema (Material You)** para adaptar la paleta de la app a tu fondo de pantalla en Android mediante `dynamic_color`, conservando el diseño monocromático de alto contraste como opción predeterminada.
+- **Diálogos y Ajustes Agrupados:** Submenús de configuración organizados en tarjetas agrupadas con previsualización en vivo de cuadrícula y cristal, además de hojas modales y diálogos actualizados sin alterar las reglas ni el motor de notas.
+
 ### [v1.1.9] - Fórmulas Avanzadas, Rediseño Visual y Funciones Matemáticas
 **Fecha**: Septiembre 2026
 
@@ -234,6 +245,7 @@ Encuentra a continuación el historial de versiones de la aplicación y su corre
 
 ## 📁 Estructura del Proyecto
 - `lib/models`: Entidades de la base de datos y la lógica matemática pura (Ramo, Evaluación, CategoriaEvaluacion).
+- `lib/theme`: Sistema de diseño Android 17 / Material 3 Expressive (`NotasVisualTokens`, `AppTheme` y componentes reutilizables de cristal).
 - `lib/viewmodels`: Providers de Riverpod manejando el estado, la inyección de dependencias y el acceso asíncrono a SQLite.
 - `lib/views`: Interfaz de Usuario y widgets (Scaffolds, listados, modales de ingreso).
 - `lib/services`: Control de la conexión y esquemas de Base de Datos.

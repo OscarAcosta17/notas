@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import '../models/evaluacion.dart';
 import '../services/database_helper.dart';
+import '../services/ics_export_service.dart';
 import '../services/notification_service.dart';
 import '../services/widget_service.dart';
-import '../services/ics_export_service.dart';
-import 'package:open_filex/open_filex.dart';
+import '../theme/app_theme.dart';
+import '../theme/expressive_widgets.dart';
 import 'settings_view.dart';
+
 class AgendaView extends StatefulWidget {
   const AgendaView({super.key});
 
@@ -27,17 +30,17 @@ class _AgendaViewState extends State<AgendaView> {
   Future<void> _loadAgenda() async {
     final db = DatabaseHelper.instance;
     List<Map<String, dynamic>> upcoming = [];
-    
+
     try {
       final subjects = await db.database.then((db) => db.query('subjects'));
       for (var sub in subjects) {
         final subjectId = sub['id'] as int;
         final subjectName = sub['name'] as String;
-        
+
         final cats = await db.queryCategoriesBySubject(subjectId);
         for (var cat in cats) {
           final catId = cat['id'] as int;
-          
+
           final evs = await db.queryEvaluationsByCategory(catId);
           for (var ev in evs) {
             final eval = Evaluacion.fromMap(ev);
@@ -50,13 +53,12 @@ class _AgendaViewState extends State<AgendaView> {
           }
         }
       }
-      
+
       upcoming.sort((a, b) {
         final evalA = a['eval'] as Evaluacion;
         final evalB = b['eval'] as Evaluacion;
         return evalA.fecha!.compareTo(evalB.fecha!);
       });
-      
     } catch (e) {
       debugPrint("Error loading agenda: $e");
     }
@@ -72,47 +74,79 @@ class _AgendaViewState extends State<AgendaView> {
   String _formatDateTime(DateTime dt) {
     final days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
     final months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    
+
     final dayStr = days[dt.weekday - 1];
     final monthStr = months[dt.month - 1];
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
-    
-    return '$dayStr ${dt.day} $monthStr • $hour:$minute';
+
+    return '$dayStr ${dt.day} $monthStr · $hour:$minute';
   }
 
   String _getMonthName(int month) {
-    final months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    final months = [
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
+    ];
     return months[month - 1];
   }
 
   void _showActionDialog(Evaluacion eval, String subjectName) {
-    showModalBottomSheet(
+    final tokens = context.visualTokens;
+
+    showExpressiveModalSheet(
       context: context,
-      builder: (context) {
-        return SafeArea(
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.edit),
-                title: const Text('Editar fecha o nombre'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditDialog(eval, subjectName);
-                },
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  eval.nombre,
+                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
-                title: const Text('Eliminar de agenda', style: TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  eval.fecha = null; // Removing date removes it from agenda, keeping the evaluation itself
-                  await DatabaseHelper.instance.updateEvaluation(eval.toMap());
-                  await NotificationService.cancelEvaluationReminder(eval.id!);
-                  WidgetService.updateAgendaWidget();
-                  _loadAgenda();
-                },
+              const SizedBox(height: 4),
+              ExpressiveGroupedSection(
+                margin: EdgeInsets.zero,
+                children: [
+                  ListTile(
+                    leading: const TonalIconBadge(icon: Icons.edit_rounded),
+                    title: const Text('Editar fecha o nombre', style: TextStyle(fontWeight: FontWeight.w600)),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _showEditDialog(eval, subjectName);
+                    },
+                  ),
+                  ListTile(
+                    leading: TonalIconBadge(icon: Icons.event_busy_rounded, color: tokens.failingColor),
+                    title: Text(
+                      'Eliminar de agenda',
+                      style: TextStyle(color: tokens.failingColor, fontWeight: FontWeight.w600),
+                    ),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      eval.fecha = null; // Removing date removes it from agenda, keeping the evaluation itself
+                      await DatabaseHelper.instance.updateEvaluation(eval.toMap());
+                      await NotificationService.cancelEvaluationReminder(eval.id!);
+                      WidgetService.updateAgendaWidget();
+                      _loadAgenda();
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -144,9 +178,13 @@ class _AgendaViewState extends State<AgendaView> {
                   Row(
                     children: [
                       Expanded(
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(selectedDate != null ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}' : 'Fecha'),
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                          label: Text(
+                            selectedDate != null
+                                ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}'
+                                : 'Fecha',
+                          ),
                           onPressed: () async {
                             final d = await showDatePicker(
                               context: context,
@@ -156,15 +194,22 @@ class _AgendaViewState extends State<AgendaView> {
                             );
                             if (d != null) {
                               setStateSB(() {
-                                selectedDate = DateTime(d.year, d.month, d.day, selectedTime?.hour ?? 0, selectedTime?.minute ?? 0);
+                                selectedDate = DateTime(
+                                  d.year,
+                                  d.month,
+                                  d.day,
+                                  selectedTime?.hour ?? 0,
+                                  selectedTime?.minute ?? 0,
+                                );
                               });
                             }
                           },
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.access_time),
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.access_time_rounded, size: 18),
                           label: Text(selectedTime != null ? selectedTime!.format(context) : 'Hora'),
                           onPressed: () async {
                             final t = await showTimePicker(
@@ -175,7 +220,13 @@ class _AgendaViewState extends State<AgendaView> {
                               setStateSB(() {
                                 selectedTime = t;
                                 if (selectedDate != null) {
-                                  selectedDate = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day, t.hour, t.minute);
+                                  selectedDate = DateTime(
+                                    selectedDate!.year,
+                                    selectedDate!.month,
+                                    selectedDate!.day,
+                                    t.hour,
+                                    t.minute,
+                                  );
                                 }
                               });
                             }
@@ -188,18 +239,18 @@ class _AgendaViewState extends State<AgendaView> {
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-                ElevatedButton(
+                FilledButton(
                   onPressed: () async {
                     if (nameCtrl.text.isNotEmpty) {
                       eval.nombre = nameCtrl.text;
                       eval.fecha = selectedDate;
                       await DatabaseHelper.instance.updateEvaluation(eval.toMap());
-                      
+
                       await NotificationService.cancelEvaluationReminder(eval.id!);
                       if (eval.fecha != null) {
                         await NotificationService.scheduleEvaluationReminder(eval, subjectName);
                       }
-                      
+
                       WidgetService.updateAgendaWidget();
                       _loadAgenda();
                       if (context.mounted) Navigator.pop(context);
@@ -226,76 +277,85 @@ class _AgendaViewState extends State<AgendaView> {
     final subjects = _evaluations.map((e) => e['subjectName'] as String).toSet().toList();
     final selectedSubjects = Set<String>.from(subjects);
 
-    showModalBottomSheet(
+    showExpressiveModalSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
+      builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setStateSB) {
-            return SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('Exportar Agenda', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Exportar Agenda',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const Text('Selecciona los ramos a incluir:', style: TextStyle(fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 8),
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: subjects.length,
-                        itemBuilder: (context, index) {
-                          final subject = subjects[index];
-                          return CheckboxListTile(
-                            title: Text(subject),
-                            value: selectedSubjects.contains(subject),
-                            onChanged: (bool? value) {
-                              setStateSB(() {
-                                if (value == true) {
-                                  selectedSubjects.add(subject);
-                                } else {
-                                  selectedSubjects.remove(subject);
-                                }
-                              });
-                            },
-                          );
+                  ),
+                  Text(
+                    'Selecciona los ramos a incluir:',
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.34),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: subjects.length,
+                      itemBuilder: (context, index) {
+                        final subject = subjects[index];
+                        return CheckboxListTile(
+                          title: Text(subject, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          value: selectedSubjects.contains(subject),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          onChanged: (bool? value) {
+                            setStateSB(() {
+                              if (value == true) {
+                                selectedSubjects.add(subject);
+                              } else {
+                                selectedSubjects.remove(subject);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ExpressiveGroupedSection(
+                    margin: EdgeInsets.zero,
+                    children: [
+                      ListTile(
+                        leading: const TonalIconBadge(icon: Icons.share_rounded, color: Colors.green),
+                        title: const Text('Enviar archivo .ics', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
+                        onTap: () async {
+                          if (selectedSubjects.isEmpty) return;
+                          Navigator.pop(sheetContext);
+                          await _executeAgendaExport(false, selectedSubjects);
                         },
                       ),
-                    ),
-                    const Divider(),
-                    ListTile(
-                      leading: const Icon(Icons.share, color: Colors.green),
-                      title: const Text('Enviar archivo .ics'),
-                      subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
-                      onTap: () async {
-                        if (selectedSubjects.isEmpty) return;
-                        Navigator.pop(context);
-                        await _executeAgendaExport(false, selectedSubjects);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.calendar_month, color: Colors.orange),
-                      title: const Text('Exportar a otra app (Calendario)'),
-                      subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
-                      onTap: () async {
-                        if (selectedSubjects.isEmpty) return;
-                        Navigator.pop(context);
-                        await _executeAgendaExport(true, selectedSubjects);
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                  ],
-                ),
+                      ListTile(
+                        leading: const TonalIconBadge(icon: Icons.calendar_month_rounded, color: Colors.orange),
+                        title: const Text('Exportar a otra app (Calendario)', style: TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
+                        onTap: () async {
+                          if (selectedSubjects.isEmpty) return;
+                          Navigator.pop(sheetContext);
+                          await _executeAgendaExport(true, selectedSubjects);
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             );
           },
         );
-      }
+      },
     );
   }
 
@@ -318,121 +378,176 @@ class _AgendaViewState extends State<AgendaView> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
     Widget content;
     if (_isLoading) {
       content = const Center(child: CircularProgressIndicator());
     } else if (_evaluations.isEmpty) {
-      content = const Center(
-        child: Text(
-          'No hay evaluaciones con fechas programadas.',
-          style: TextStyle(color: Colors.grey, fontSize: 16),
+      content = Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge),
+              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.4)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const TonalIconBadge(icon: Icons.event_available_rounded, size: 58),
+                const SizedBox(height: 14),
+                Text(
+                  'Sin evaluaciones agendadas',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Asigna fechas en la pestaña Fechas de cualquier ramo.',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
         ),
       );
     } else {
       // Group by Month/Year
-      Map<String, List<Map<String, dynamic>>> grouped = {};
+      final Map<String, List<Map<String, dynamic>>> grouped = {};
       for (var data in _evaluations) {
         final eval = data['eval'] as Evaluacion;
         final key = '${_getMonthName(eval.fecha!.month)} ${eval.fecha!.year}';
-        if (!grouped.containsKey(key)) {
-          grouped[key] = [];
-        }
-        grouped[key]!.add(data);
+        grouped.putIfAbsent(key, () => []).add(data);
       }
 
       final keys = grouped.keys.toList();
 
       content = ListView.builder(
-      padding: const EdgeInsets.all(16).copyWith(bottom: 100),
-      itemCount: keys.length,
-      itemBuilder: (context, sectionIndex) {
-        final monthKey = keys[sectionIndex];
-        final items = grouped[monthKey]!;
+        padding: EdgeInsets.fromLTRB(16, topInset + 12, 16, 112 + bottomInset),
+        itemCount: keys.length,
+        itemBuilder: (context, sectionIndex) {
+          final monthKey = keys[sectionIndex];
+          final items = grouped[monthKey]!;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 12, left: 4),
-              child: Text(
-                monthKey,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 10, left: 4),
+                child: Row(
+                  children: [
+                    Text(
+                      monthKey,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: scheme.primary,
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                      ),
+                      child: Text(
+                        '${items.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            ...items.map((data) {
-              final eval = data['eval'] as Evaluacion;
-              final subjectName = data['subjectName'] as String;
-              final isPast = eval.fecha!.isBefore(DateTime.now());
+              ...items.map((data) {
+                final eval = data['eval'] as Evaluacion;
+                final subjectName = data['subjectName'] as String;
+                final isPast = eval.fecha!.isBefore(DateTime.now());
+                final accent = isPast ? tokens.failingColor : scheme.primary;
 
-              return Card(
-                elevation: 0,
-                color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: isPast 
-                        ? Colors.red.withValues(alpha: 0.3)
-                        : Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-                    width: 1,
-                  ),
-                ),
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  leading: Icon(
-                    Icons.event,
-                    color: isPast ? Colors.red : Theme.of(context).colorScheme.primary,
-                  ),
-                  title: Text(
-                    eval.nombre,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Theme.of(context).colorScheme.onSurface,
-                      decoration: isPast ? TextDecoration.lineThrough : null,
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: isPast
+                        ? Color.alphaBlend(tokens.failingColor.withValues(alpha: 0.05), scheme.surfaceContainerLow)
+                        : scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                    border: Border.all(
+                      color: isPast
+                          ? tokens.failingColor.withValues(alpha: 0.35)
+                          : scheme.outlineVariant.withValues(alpha: 0.45),
                     ),
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text(
-                        subjectName,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                          fontWeight: FontWeight.w500,
-                        ),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusLarge)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    leading: TonalIconBadge(icon: Icons.event_rounded, color: accent),
+                    title: Text(
+                      eval.nombre,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: scheme.onSurface,
+                        decoration: isPast ? TextDecoration.lineThrough : null,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _formatDateTime(eval.fecha!),
-                        style: TextStyle(
-                          color: isPast ? Colors.red : Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 3),
+                        Text(
+                          subjectName,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                          ),
+                          child: Text(
+                            _formatDateTime(eval.fecha!),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: accent,
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    onLongPress: () => _showActionDialog(eval, subjectName),
                   ),
-                onLongPress: () => _showActionDialog(eval, subjectName),
-                ),
-              );
-            }),
-            const SizedBox(height: 16),
-          ],
-        );
-      },
-    );
-    } // End of else
+                );
+              }),
+              const SizedBox(height: 12),
+            ],
+          );
+        },
+      );
+    }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Agenda de Evaluaciones', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        elevation: 0,
+      extendBodyBehindAppBar: true,
+      backgroundColor: scheme.surface,
+      appBar: FrostedAppBar(
+        title: const Text('Agenda de Evaluaciones'),
         actions: [
           IconButton(
             icon: const Icon(Icons.file_upload_outlined),
@@ -440,7 +555,8 @@ class _AgendaViewState extends State<AgendaView> {
             onPressed: _exportAgenda,
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Configuración',
             onPressed: () {
               Navigator.push(
                 context,

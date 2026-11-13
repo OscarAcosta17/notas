@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'dart:async';
 import '../models/evaluacion.dart';
 import '../viewmodels/categoria_provider.dart';
 
@@ -58,16 +58,35 @@ class _GradeInputFieldState extends ConsumerState<GradeInputField> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return TextFormField(
       controller: _controller,
+      textAlign: TextAlign.center,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+      style: TextStyle(
+        color: scheme.onSurface,
+        fontWeight: FontWeight.w700,
+        fontSize: 15,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
       decoration: InputDecoration(
         hintText: 'Nota',
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        isDense: true,
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.45)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
       onChanged: _onChanged,

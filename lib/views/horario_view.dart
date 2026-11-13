@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import '../models/clase_horario.dart';
 import '../services/database_helper.dart';
-import '../services/notification_service.dart';
-import '../services/widget_service.dart';
 import '../services/ics_export_service.dart';
+import '../services/notification_service.dart';
 import '../services/schedule_image_exporter.dart';
-import 'package:open_filex/open_filex.dart';
+import '../services/widget_service.dart';
+import '../theme/app_theme.dart';
+import '../theme/expressive_widgets.dart';
+
 class HorarioView extends StatefulWidget {
   final int semesterId;
   const HorarioView({super.key, required this.semesterId});
@@ -29,7 +32,7 @@ class _HorarioViewState extends State<HorarioView> {
     _loadHorario();
     NotificationService.requestPermissions();
   }
-  
+
   @override
   void didUpdateWidget(HorarioView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -41,31 +44,42 @@ class _HorarioViewState extends State<HorarioView> {
   Future<void> _loadHorario() async {
     final db = DatabaseHelper.instance;
     final maps = await db.queryHorariosBySemester(widget.semesterId);
-    
+
     final semesters = await db.queryAllSemesters();
     final currentSem = semesters.firstWhere((s) => s['id'] == widget.semesterId, orElse: () => {'name': ''});
-    
+
     final subjects = await db.querySubjectsBySemester(widget.semesterId);
 
-    setState(() {
-      _clases = maps.map((e) => ClaseHorario.fromMap(e)).toList();
-      _semesterName = currentSem['name'] as String;
-      _subjects = subjects;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _clases = maps.map((e) => ClaseHorario.fromMap(e)).toList();
+        _semesterName = currentSem['name'] as String;
+        _subjects = subjects;
+        _isLoading = false;
+      });
+    }
   }
 
   String _formatBlock(int bloque) {
     switch (bloque) {
-      case 1: return '08:15 - 09:25';
-      case 3: return '09:40 - 10:50';
-      case 5: return '11:05 - 12:15';
-      case 7: return '12:30 - 13:40';
-      case 9: return '14:40 - 15:50';
-      case 11: return '16:05 - 17:15';
-      case 13: return '17:30 - 18:40';
-      case 15: return '18:55 - 20:05';
-      default: return 'Desconocido';
+      case 1:
+        return '08:15 - 09:25';
+      case 3:
+        return '09:40 - 10:50';
+      case 5:
+        return '11:05 - 12:15';
+      case 7:
+        return '12:30 - 13:40';
+      case 9:
+        return '14:40 - 15:50';
+      case 11:
+        return '16:05 - 17:15';
+      case 13:
+        return '17:30 - 18:40';
+      case 15:
+        return '18:55 - 20:05';
+      default:
+        return 'Desconocido';
     }
   }
 
@@ -86,7 +100,7 @@ class _HorarioViewState extends State<HorarioView> {
       await DatabaseHelper.instance.updateHorario(nueva.toMap());
       await NotificationService.cancelClassReminder(existingId);
     }
-    
+
     if (_notificationsEnabled) {
       await NotificationService.scheduleClassReminder(nueva);
     }
@@ -109,8 +123,7 @@ class _HorarioViewState extends State<HorarioView> {
       return;
     }
 
-    String? selectedSubjectName = existingClase?.subjectName ?? _subjects.first['name'] as String;
-    // Verifica si el ramo de la clase existente aún está en la lista
+    String selectedSubjectName = existingClase?.subjectName ?? _subjects.first['name'] as String;
     if (!_subjects.any((s) => s['name'] == selectedSubjectName)) {
       selectedSubjectName = _subjects.first['name'] as String;
     }
@@ -131,7 +144,7 @@ class _HorarioViewState extends State<HorarioView> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: selectedSubjectName,
+                      initialValue: selectedSubjectName,
                       decoration: const InputDecoration(labelText: 'Ramo'),
                       items: _subjects.map((s) {
                         final name = s['name'] as String;
@@ -144,8 +157,9 @@ class _HorarioViewState extends State<HorarioView> {
                         if (val != null) setStateSB(() => selectedSubjectName = val);
                       },
                     ),
+                    const SizedBox(height: 14),
                     DropdownButtonFormField<int>(
-                      value: selectedBloque,
+                      initialValue: selectedBloque,
                       decoration: const InputDecoration(labelText: 'Bloque'),
                       items: [1, 3, 5, 7, 9, 11, 13, 15].map((b) {
                         return DropdownMenuItem(
@@ -157,10 +171,12 @@ class _HorarioViewState extends State<HorarioView> {
                         if (val != null) setStateSB(() => selectedBloque = val);
                       },
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: salaCtrl,
                       decoration: const InputDecoration(labelText: 'Sala'),
                     ),
+                    const SizedBox(height: 14),
                     TextField(
                       controller: paraleloCtrl,
                       decoration: const InputDecoration(labelText: 'Paralelo'),
@@ -173,27 +189,25 @@ class _HorarioViewState extends State<HorarioView> {
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Cancelar'),
                 ),
-                ElevatedButton(
+                FilledButton(
                   onPressed: () {
-                    if (selectedSubjectName != null) {
-                      _saveClase(
-                        selectedSubjectName!,
-                        diaSemana,
-                        selectedBloque,
-                        salaCtrl.text.trim(),
-                        paraleloCtrl.text.trim(),
-                        existingClase?.id,
-                      );
-                      Navigator.pop(context);
-                    }
+                    _saveClase(
+                      selectedSubjectName,
+                      diaSemana,
+                      selectedBloque,
+                      salaCtrl.text.trim(),
+                      paraleloCtrl.text.trim(),
+                      existingClase?.id,
+                    );
+                    Navigator.pop(context);
                   },
                   child: const Text('Guardar'),
                 ),
               ],
             );
-          }
+          },
         );
-      }
+      },
     );
   }
 
@@ -221,7 +235,7 @@ class _HorarioViewState extends State<HorarioView> {
         await NotificationService.cancelClassReminder(c.id!);
       }
     }
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_notificationsEnabled ? 'Notificaciones activadas' : 'Notificaciones desactivadas')),
@@ -237,50 +251,58 @@ class _HorarioViewState extends State<HorarioView> {
       return;
     }
 
-    showModalBottomSheet(
+    showExpressiveModalSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return SafeArea(
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Opciones de Exportación', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Opciones de Exportación',
+                  style: Theme.of(sheetContext).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.image, color: Colors.blue),
-                title: const Text('Compartir como Imagen'),
-                subtitle: const Text('Genera una cuadrícula visual de tu horario'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await ScheduleImageExporter.exportHorarioImage(_clases, _semesterName);
-                },
+              const SizedBox(height: 6),
+              ExpressiveGroupedSection(
+                margin: EdgeInsets.zero,
+                children: [
+                  ListTile(
+                    leading: const TonalIconBadge(icon: Icons.image_rounded, color: Colors.blue),
+                    title: const Text('Compartir como Imagen', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Genera una cuadrícula visual de tu horario'),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await ScheduleImageExporter.exportHorarioImage(_clases, _semesterName);
+                    },
+                  ),
+                  ListTile(
+                    leading: const TonalIconBadge(icon: Icons.share_rounded, color: Colors.green),
+                    title: const Text('Enviar archivo .ics', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await _exportIcs(false);
+                    },
+                  ),
+                  ListTile(
+                    leading: const TonalIconBadge(icon: Icons.calendar_month_rounded, color: Colors.orange),
+                    title: const Text('Exportar a otra app (Calendario)', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await _exportIcs(true);
+                    },
+                  ),
+                ],
               ),
-              ListTile(
-                leading: const Icon(Icons.share, color: Colors.green),
-                title: const Text('Enviar archivo .ics'),
-                subtitle: const Text('Comparte el archivo para importar en otro dispositivo'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _exportIcs(false);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_month, color: Colors.orange),
-                title: const Text('Exportar a otra app (Calendario)'),
-                subtitle: const Text('Abre el archivo con Google Calendar o Outlook'),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _exportIcs(true);
-                },
-              ),
-              const SizedBox(height: 10),
             ],
           ),
         );
-      }
+      },
     );
   }
 
@@ -291,7 +313,7 @@ class _HorarioViewState extends State<HorarioView> {
       lastDate: DateTime(2100),
       initialDateRange: DateTimeRange(
         start: DateTime.now(),
-        end: DateTime.now().add(const Duration(days: 120)), // Default 4 months (typical semester)
+        end: DateTime.now().add(const Duration(days: 120)),
       ),
       helpText: 'Selecciona la duración del semestre',
       saveText: 'Continuar',
@@ -311,14 +333,21 @@ class _HorarioViewState extends State<HorarioView> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
+    final scheme = Theme.of(context).colorScheme;
+    final tokens = context.visualTokens;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
     return DefaultTabController(
       length: 5,
       child: Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
+        backgroundColor: scheme.surface,
         appBar: AppBar(
-          title: Text('Horario - $_semesterName', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 18)),
-          backgroundColor: Theme.of(context).colorScheme.surface,
-          elevation: 0,
+          backgroundColor: scheme.surface,
+          title: Text(
+            'Horario · $_semesterName',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 19),
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.file_upload_outlined),
@@ -326,20 +355,18 @@ class _HorarioViewState extends State<HorarioView> {
               onPressed: _exportHorario,
             ),
             IconButton(
-              icon: Icon(_notificationsEnabled ? Icons.notifications_active : Icons.notifications_off),
-              color: _notificationsEnabled ? Theme.of(context).colorScheme.primary : Colors.grey,
+              icon: Icon(_notificationsEnabled ? Icons.notifications_active_rounded : Icons.notifications_off_outlined),
+              color: _notificationsEnabled ? scheme.primary : scheme.onSurfaceVariant,
+              tooltip: _notificationsEnabled ? 'Silenciar horario' : 'Activar alertas',
               onPressed: _toggleNotifications,
             ),
           ],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabs: [
-              Tab(text: 'Lun'),
-              Tab(text: 'Mar'),
-              Tab(text: 'Mié'),
-              Tab(text: 'Jue'),
-              Tab(text: 'Vie'),
-            ],
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(56),
+            child: ExpressivePillTabBar(
+              labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'],
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 10),
+            ),
           ),
         ),
         body: TabBarView(
@@ -351,54 +378,92 @@ class _HorarioViewState extends State<HorarioView> {
             return Stack(
               children: [
                 if (clasesDia.isEmpty)
-                  const Center(child: Text('No hay clases este día.', style: TextStyle(color: Colors.grey)))
+                  Center(
+                    child: Text(
+                      'No hay clases este día.',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  )
                 else
                   ListView.builder(
-                    padding: const EdgeInsets.all(16).copyWith(bottom: 160),
+                    padding: EdgeInsets.fromLTRB(16, 12, 16, 148 + bottomInset),
                     itemCount: clasesDia.length,
                     itemBuilder: (context, i) {
                       final c = clasesDia[i];
-                      return Card(
-                        elevation: 0,
+                      return Container(
                         margin: const EdgeInsets.only(bottom: 12),
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
+                          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.45)),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          title: Text(
-                            c.subjectName,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text('Bloque ${c.bloque}-${c.bloque + 1} (${_formatBlock(c.bloque)})', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 2),
-                              Text('Sala: ${c.sala} | Paralelo: ${c.paralelo}'),
-                            ],
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            onPressed: () => _deleteClase(c),
-                          ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
                           onLongPress: () => _showAddEditDialog(dia, c),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 10, 14),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: scheme.primaryContainer,
+                                          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                                        ),
+                                        child: Text(
+                                          'Bloque ${c.bloque}-${c.bloque + 1} · ${_formatBlock(c.bloque)}',
+                                          style: TextStyle(
+                                            color: scheme.onPrimaryContainer,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                            fontFeatures: const [FontFeature.tabularFigures()],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        c.subjectName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 17,
+                                          color: scheme.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Sala: ${c.sala.isEmpty ? '-' : c.sala}  ·  Paralelo: ${c.paralelo.isEmpty ? '-' : c.paralelo}',
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline_rounded, color: tokens.failingColor),
+                                  onPressed: () => _deleteClase(c),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },
                   ),
                 Positioned(
-                  bottom: 100,
-                  right: 24,
+                  bottom: 92 + bottomInset,
+                  right: 20,
                   child: FloatingActionButton(
                     heroTag: 'fab_add_clase_$dia',
                     onPressed: () => _showAddEditDialog(dia),
-                    child: const Icon(Icons.add),
+                    child: const Icon(Icons.add_rounded),
                   ),
-                )
+                ),
               ],
             );
           }),

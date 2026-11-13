@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/categoria_evaluacion.dart';
+import '../theme/app_theme.dart';
 import '../viewmodels/categoria_provider.dart';
 import 'formula_editor_dialog.dart';
 
 class EditCategoriaDialog extends ConsumerStatefulWidget {
   final int ramoId;
   final CategoriaEvaluacion categoria;
-  
+
   const EditCategoriaDialog({super.key, required this.ramoId, required this.categoria});
 
   @override
@@ -70,45 +71,41 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge)),
+      backgroundColor: scheme.surfaceContainerHigh,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Editar Categoría', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: Theme.of(context).colorScheme.onSurface)),
+            Text(
+              'Editar Categoría',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 21, color: scheme.onSurface),
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _nombreController,
-              decoration: InputDecoration(
-                labelText: 'Nombre de la Categoría',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              decoration: const InputDecoration(labelText: 'Nombre de la Categoría'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextField(
               controller: _porcentajeController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Porcentaje Total (%)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              decoration: const InputDecoration(labelText: 'Porcentaje Total (%)'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextField(
               controller: _notaController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Nota Mínima (Opcional)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+              decoration: const InputDecoration(labelText: 'Nota Mínima (Opcional)'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             DropdownButtonFormField<String>(
-              value: _averageType,
+              initialValue: _averageType,
               decoration: const InputDecoration(labelText: 'Tipo de Promedio'),
               items: ['Aritmetico', 'Geometrico', 'Personalizada'].map((String val) {
                 return DropdownMenuItem(
@@ -120,45 +117,47 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
                 if (val != null) setState(() => _averageType = val);
               },
             ),
-              if (_averageType == 'Personalizada') ...[
-                const SizedBox(height: 8),
-                const Text('Fórmula:', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 4),
-                InkWell(
-                  onTap: () async {
-                    final result = await showDialog<String>(
-                      context: context,
-                      builder: (context) => FormulaEditorDialog(
-                        initialFormula: _customFormula ?? '',
-                        existingVariables: List.generate(widget.categoria.evaluaciones.length, (i) => 'e${i + 1}'),
-                      ),
-                    );
-                    if (result != null) {
-                      setState(() {
-                        _customFormula = result;
-                      });
-                    }
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey),
-                      borderRadius: BorderRadius.circular(8),
+            if (_averageType == 'Personalizada') ...[
+              const SizedBox(height: 10),
+              Text('Fórmula:', style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 6),
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () async {
+                  final result = await showDialog<String>(
+                    context: context,
+                    builder: (context) => FormulaEditorDialog(
+                      initialFormula: _customFormula ?? '',
+                      existingVariables: List.generate(widget.categoria.evaluaciones.length, (i) => 'e${i + 1}'),
                     ),
-                    child: Text(
-                      _customFormula?.isNotEmpty == true ? _customFormula! : 'Toca para editar fórmula...',
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        color: _customFormula?.isNotEmpty == true ? Theme.of(context).colorScheme.onSurface : Colors.grey,
-                      ),
+                  );
+                  if (result != null) {
+                    setState(() {
+                      _customFormula = result;
+                    });
+                  }
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerLow,
+                    border: Border.all(color: scheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    _customFormula?.isNotEmpty == true ? _customFormula! : 'Toca para editar fórmula...',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: _customFormula?.isNotEmpty == true ? scheme.onSurface : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-              ],
-            const SizedBox(height: 16),
+              ),
+            ],
+            const SizedBox(height: 10),
             SwitchListTile(
-              title: const Text('Eliminar peor nota', style: TextStyle(fontSize: 14)),
+              title: const Text('Eliminar peor nota', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500)),
               value: _dropLowest,
               contentPadding: EdgeInsets.zero,
               onChanged: (val) {
@@ -173,19 +172,15 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                  child: const Text('Cancelar'),
                 ),
                 const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                  ),
+                FilledButton(
                   onPressed: _submit,
                   child: const Text('Guardar'),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),

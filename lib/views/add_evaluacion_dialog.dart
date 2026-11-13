@@ -32,19 +32,22 @@ class _AddEvaluacionDialogState extends ConsumerState<AddEvaluacionDialog> {
                 validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
                 onSaved: (val) => _nombre = val!,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               TextFormField(
-                decoration: const InputDecoration(labelText: 'Peso Específico % (Dejar en blanco si se divide en partes iguales)'),
+                decoration: const InputDecoration(
+                  labelText: 'Peso Específico %',
+                  hintText: 'Dejar vacío si es equitativo',
+                ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (val) {
-                  if (val != null && val.isNotEmpty && double.tryParse(val) == null) {
+                  if (val != null && val.isNotEmpty && double.tryParse(val.replaceAll(',', '.')) == null) {
                     return 'Debe ser número válido';
                   }
                   return null;
                 },
                 onSaved: (val) {
                   if (val != null && val.trim().isNotEmpty) {
-                    _pesoEspecifico = double.parse(val);
+                    _pesoEspecifico = double.parse(val.replaceAll(',', '.'));
                   }
                 },
               ),
@@ -54,11 +57,7 @@ class _AddEvaluacionDialogState extends ConsumerState<AddEvaluacionDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-          ),
+        FilledButton(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               _formKey.currentState!.save();
