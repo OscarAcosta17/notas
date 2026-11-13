@@ -583,7 +583,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
       activeSemestre = idx != -1 ? semestres[idx] : semestres.last;
     }
 
-    final useCoupledFab = settings.bottomNavStyle == 'floating_fab';
+    final useCoupledFab = settings.bottomNavStyle != 'dock';
     final useHeaderSelector = settings.semesterSelectorStyle == 'header';
     final showCoupledFab = useCoupledFab &&
         !_isRamoSelectionMode &&
@@ -683,6 +683,7 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.visualTokens;
     final bottomPadding = MediaQuery.viewPaddingOf(context).bottom;
+    final isDark = scheme.brightness == Brightness.dark;
     final isDock = bottomNavStyle == 'dock';
     final barHeight = navLabelMode == 'icon_only' ? 56.0 : 62.0;
 
@@ -700,6 +701,168 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
       );
     }
 
+    Widget buildCoupledFab({required bool isCircular}) {
+      final radius = isCircular ? barHeight / 2 : 19.0;
+      return AnimatedSize(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        child: showCoupledFab
+            ? Padding(
+                padding: const EdgeInsets.only(left: 10),
+                child: Material(
+                  color: tokens.accentColor,
+                  borderRadius: BorderRadius.circular(radius),
+                  elevation: 3,
+                  shadowColor: tokens.accentColor.withValues(alpha: 0.35),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(radius),
+                    onTap: onPressedFab,
+                    child: Tooltip(
+                      message: currentTab == 0 ? 'Añadir Ramo' : 'Añadir Bloque',
+                      child: SizedBox(
+                        width: barHeight,
+                        height: barHeight,
+                        child: Icon(
+                          Icons.add_rounded,
+                          size: 28,
+                          color: tokens.onAccentColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : const SizedBox.shrink(),
+      );
+    }
+
+    if (bottomNavStyle == 'm3_expressive') {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Container(
+                height: barHeight,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.36 : 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: FrostedGlassSurface(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                  padding: const EdgeInsets.all(5),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(_items.length, (i) {
+                      final item = _items[i];
+                      final selected = currentTab == i;
+                      final showLabel = navLabelMode != 'icon_only' && selected;
+                      final activeFg = Color.lerp(tokens.onAccentContainer, tokens.accentColor, 0.35)!;
+                      final fg = selected ? activeFg : scheme.onSurfaceVariant;
+
+                      return Tooltip(
+                        message: item.label,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                          onTap: () => onSelectTab(i),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 240),
+                            curve: Curves.easeOutCubic,
+                            height: double.infinity,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: showLabel ? 18 : 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selected ? tokens.accentContainer : Colors.transparent,
+                              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                              border: selected
+                                  ? Border.all(color: tokens.accentColor.withValues(alpha: 0.25))
+                                  : null,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(item.icon, size: 22, color: fg),
+                                if (showLabel) ...[
+                                  const SizedBox(width: 7),
+                                  Text(
+                                    item.label,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: fg,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ),
+            buildCoupledFab(isCircular: false),
+          ],
+        ),
+      );
+    }
+
+    if (bottomNavStyle == 'ios_glass') {
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 288),
+                child: Container(
+                  height: barHeight,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.38 : 0.12),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: FrostedGlassSurface(
+                    borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                    customBorder: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.16)
+                          : Colors.white.withValues(alpha: 0.72),
+                      width: 1.1,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                    child: _buildGlassNavTrack(context, tokens, scheme),
+                  ),
+                ),
+              ),
+            ),
+            buildCoupledFab(isCircular: true),
+          ],
+        ),
+      );
+    }
+
+    final isOneUi = bottomNavStyle == 'one_ui';
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding + 12),
       child: Row(
@@ -709,55 +872,113 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
             child: Container(
               height: barHeight,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                borderRadius: BorderRadius.circular(isOneUi ? 28 : AppTheme.radiusFull),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: scheme.brightness == Brightness.dark ? 0.34 : 0.10),
-                    blurRadius: 22,
+                    color: Colors.black.withValues(alpha: isDark ? 0.34 : 0.10),
+                    blurRadius: isOneUi ? 26 : 22,
                     offset: const Offset(0, 8),
                   ),
                 ],
               ),
               child: FrostedGlassSurface(
-                borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                borderRadius: BorderRadius.circular(isOneUi ? 28 : AppTheme.radiusFull),
+                customBorder: isOneUi
+                    ? Border.all(
+                        color: tokens.accentColor.withValues(alpha: isDark ? 0.32 : 0.22),
+                        width: 1.2,
+                      )
+                    : null,
                 padding: const EdgeInsets.all(5),
-                child: _buildNavTrack(context, tokens, scheme, isDock: false),
+                child: _buildNavTrack(
+                  context,
+                  tokens,
+                  scheme,
+                  isDock: false,
+                  isOneUi: isOneUi,
+                ),
               ),
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            child: showCoupledFab
-                ? Padding(
-                    padding: const EdgeInsets.only(left: 10),
-                    child: Material(
-                      color: tokens.accentColor,
-                      borderRadius: BorderRadius.circular(19),
-                      elevation: 3,
-                      shadowColor: tokens.accentColor.withValues(alpha: 0.35),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(19),
-                        onTap: onPressedFab,
-                        child: Tooltip(
-                          message: currentTab == 0 ? 'Añadir Ramo' : 'Añadir Bloque',
-                          child: SizedBox(
-                            width: barHeight,
-                            height: barHeight,
-                            child: Icon(
-                              Icons.add_rounded,
-                              size: 28,
-                              color: tokens.onAccentColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+          buildCoupledFab(isCircular: isOneUi),
         ],
       ),
+    );
+  }
+
+  Widget _buildGlassNavTrack(
+    BuildContext context,
+    NotasVisualTokens tokens,
+    ColorScheme scheme,
+  ) {
+    return Row(
+      children: List.generate(_items.length, (i) {
+        final item = _items[i];
+        final selected = currentTab == i;
+        final showLabel = switch (navLabelMode) {
+          'icon_only' => false,
+          'selected' => selected,
+          _ => true,
+        };
+        final fg = selected ? tokens.accentColor : scheme.onSurfaceVariant;
+
+        return Expanded(
+          child: Tooltip(
+            message: item.label,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+              onTap: () => onSelectTab(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  color: selected ? tokens.accentColor.withValues(alpha: 0.11) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(item.icon, size: showLabel ? 19 : 22, color: fg),
+                    if (showLabel) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          height: 1.05,
+                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                          color: fg,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 3),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      width: selected ? 18 : 0,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: tokens.accentColor,
+                        borderRadius: BorderRadius.circular(AppTheme.radiusFull),
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: tokens.accentColor.withValues(alpha: 0.55),
+                                  blurRadius: 6,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -766,8 +987,9 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
     NotasVisualTokens tokens,
     ColorScheme scheme, {
     required bool isDock,
+    bool isOneUi = false,
   }) {
-    final pillRadius = isDock ? 16.0 : AppTheme.radiusFull;
+    final pillRadius = isDock ? 16.0 : (isOneUi ? 22.0 : AppTheme.radiusFull);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -790,11 +1012,22 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
                   width: slotWidth,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: tokens.accentContainer,
+                      color: isOneUi ? tokens.accentColor : tokens.accentContainer,
                       borderRadius: BorderRadius.circular(pillRadius),
-                      border: Border.all(
-                        color: tokens.accentColor.withValues(alpha: 0.25),
-                      ),
+                      border: isOneUi
+                          ? null
+                          : Border.all(
+                              color: tokens.accentColor.withValues(alpha: 0.25),
+                            ),
+                      boxShadow: isOneUi
+                          ? [
+                              BoxShadow(
+                                color: tokens.accentColor.withValues(alpha: 0.35),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
+                              ),
+                            ]
+                          : null,
                     ),
                   ),
                 ),
@@ -807,7 +1040,9 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
                       'selected' => selected,
                       _ => true,
                     };
-                    final activeFg = Color.lerp(tokens.onAccentContainer, tokens.accentColor, 0.35)!;
+                    final activeFg = isOneUi
+                        ? tokens.onAccentColor
+                        : Color.lerp(tokens.onAccentContainer, tokens.accentColor, 0.35)!;
                     final fg = selected ? activeFg : scheme.onSurfaceVariant;
 
                     return Expanded(

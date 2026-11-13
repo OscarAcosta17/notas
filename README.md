@@ -8,6 +8,18 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
 
+### [v1.2.2] - 5 Diseños de Navegación, Degradados en Ramos y Selector Visual de Icono
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.2.2.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.2/NotasApp-v1.2.2.apk)
+
+**Novedades y Características:**
+- **5 Diseños de Barra de Navegación:** Conserva *Flotante + FAB* y *Dock clásico*, y suma **Google M3 Expressive** (cápsula compacta centrada donde la pestaña activa se expande horizontalmente), **One UI 7** (cápsula elevada con píldora sólida de alto contraste y FAB circular) y **Cápsula Cristal** (con indicador luminoso inferior), todos con vista previa en vivo en Apariencia.
+- **Nuevos Estilos de Color en Ramos (8 modos):** Incorpora **Degradado Izq ➔ Der** (que nace desde el borde izquierdo y se desvanece suavemente hacia la derecha), **Resplandor Lateral** (aura radial desde el centro izquierdo), **Neón / Doble Acento** y **Banda Superior**, además de *Mixto*, *Franja*, *Tinte* y *Borde*.
+- **Selector de Icono de la App Funcional y con Vista Previa:** Corrige el cambio de ícono en Android implementando un `MethodChannel` nativo directo sobre `PackageManager.setComponentEnabledSetting` (`MainActivityAlias` / `Icon2`), acompañado de tarjetas visuales lado a lado mostrando `assets/icon.jpg` (*Clásico*) y `assets/icon2.png` (*Minimalista*).
+
+---
+
 ### [v1.2.1] - Navegación Expressive, Color Terciario Real y Apariencia Ampliada
 **Fecha**: Noviembre 2026
 

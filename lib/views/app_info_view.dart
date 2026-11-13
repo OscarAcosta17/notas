@@ -33,15 +33,13 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.2.1)'),
+        title: const Text('Novedades (v1.2.2)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• 🧭 Nueva Navegación Android 17: Barra flotante estilizada con botón + acoplado, indicador tonal deslizante y opción clásica Dock en Ajustes.\n'
-            '• ↔️ Deslizamiento Horizontal Continuo: Navega suavemente entre Ramos, Horario y Agenda deslizando la pantalla (con auto-enfoque al día actual en Horario).\n'
-            '• 🎓 Selector de Semestre en Cabecera: Cambia, renombra o crea semestres desde la píldora superior para aprovechar más pantalla (modo Chips aún disponible).\n'
-            '• 🎨 Color Destacado (Terciario) Real y Apariencia Ampliada: Acento terciario aplicado globalmente a controles, navegación e insignias, más modos OLED puro, radio de tarjetas, estilo de color por ramo, etiquetas y vibración háptica.\n'
-            '• 📊 Progreso de Evaluación: Visualiza el porcentaje evaluado en el detalle de cada asignatura.\n'
-            '• 🚀 Actualizador Mejorado y Pausable: Al abrir la app con una versión disponible aparece una pantalla dedicada con notas de la versión, descarga pausable/reanudable, permiso de instalación asistido y firma unificada.',
+            '• 🧭 5 Diseños de Barra de Navegación: Elige entre Google M3 Expressive (cápsula compacta con expansión horizontal), One UI 7, Cápsula Cristal, Flotante + FAB y Dock clásico, todos con vista previa en vivo.\n'
+            '• 🎨 Nuevos Estilos de Color en Ramos: Añadidos Degradado Izquierda ➔ Derecha (que se desvanece suavemente hacia la derecha), Resplandor Lateral, Neón / Doble Acento y Banda Superior.\n'
+            '• 🖼️ Selector de Icono de la App Funcional y con Vista Previa: Previsualiza el icono Clásico y Minimalista lado a lado y cámbialo al instante en Android mediante canal nativo directo.\n'
+            '• ↔️ Mantiene todo lo introducido en v1.2.1: PageView continuo entre Ramos, Horario y Agenda, selector de semestre en cabecera, color destacado terciario global, modo OLED puro y actualizador pausable.',
           ),
         ),
         actions: [

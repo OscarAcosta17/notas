@@ -5,13 +5,14 @@ class SettingsState {
   final bool isDarkMode;
   final bool useDynamicColor;
   final String frostedGlassIntensity; // 'solido', 'sutil', 'intenso'
-  final String bottomNavStyle; // 'floating_fab', 'dock'
+  final String bottomNavStyle; // 'm3_expressive', 'one_ui', 'ios_glass', 'floating_fab', 'dock'
   final String navLabelMode; // 'always', 'selected', 'icon_only'
   final String semesterSelectorStyle; // 'header', 'chips'
   final bool enableHorizontalSwipe;
   final String surfaceStyle; // 'tonal', 'oled'
   final String cardRadiusStyle; // 'compacto', 'equilibrado', 'expresivo'
-  final String subjectColorStyle; // 'mixto', 'franja', 'tinte', 'borde'
+  final String subjectColorStyle; // 'degradado', 'resplandor', 'neon', 'encabezado', 'mixto', 'franja', 'tinte', 'borde'
+  final String appIcon; // 'classic', 'icon2'
   final bool hapticsEnabled;
   final String escalaNotas; // '1 a 7' o '0 a 100'
   final String subjectViewMode; // 'lista', 'cuadricula'
@@ -37,6 +38,7 @@ class SettingsState {
     required this.surfaceStyle,
     required this.cardRadiusStyle,
     required this.subjectColorStyle,
+    required this.appIcon,
     required this.hapticsEnabled,
     required this.escalaNotas,
     required this.notificationsEnabled,
@@ -61,6 +63,7 @@ class SettingsState {
     String? surfaceStyle,
     String? cardRadiusStyle,
     String? subjectColorStyle,
+    String? appIcon,
     bool? hapticsEnabled,
     String? escalaNotas,
     bool? notificationsEnabled,
@@ -85,6 +88,7 @@ class SettingsState {
       surfaceStyle: surfaceStyle ?? this.surfaceStyle,
       cardRadiusStyle: cardRadiusStyle ?? this.cardRadiusStyle,
       subjectColorStyle: subjectColorStyle ?? this.subjectColorStyle,
+      appIcon: appIcon ?? this.appIcon,
       hapticsEnabled: hapticsEnabled ?? this.hapticsEnabled,
       escalaNotas: escalaNotas ?? this.escalaNotas,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -111,6 +115,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _surfaceStyleKey = 'surfaceStyle';
   static const _cardRadiusKey = 'cardRadiusStyle';
   static const _subjectColorStyleKey = 'subjectColorStyle';
+  static const _appIconKey = 'appIcon';
   static const _hapticsKey = 'hapticsEnabled';
   static const _escalaKey = 'escalaNotas';
   static const _notifEnabledKey = 'notificationsEnabled';
@@ -137,6 +142,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       surfaceStyle: 'tonal',
       cardRadiusStyle: 'expresivo',
       subjectColorStyle: 'mixto',
+      appIcon: 'classic',
       hapticsEnabled: true,
       escalaNotas: '0 a 100',
       notificationsEnabled: true,
@@ -163,6 +169,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       surfaceStyle: prefs.getString(_surfaceStyleKey) ?? 'tonal',
       cardRadiusStyle: prefs.getString(_cardRadiusKey) ?? 'expresivo',
       subjectColorStyle: prefs.getString(_subjectColorStyleKey) ?? 'mixto',
+      appIcon: prefs.getString(_appIconKey) ?? 'classic',
       hapticsEnabled: prefs.getBool(_hapticsKey) ?? true,
       escalaNotas: prefs.getString(_escalaKey) ?? '0 a 100',
       notificationsEnabled: prefs.getBool(_notifEnabledKey) ?? true,
@@ -220,6 +227,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> setSubjectColorStyle(String style) async =>
       _setStringPref(_subjectColorStyleKey, style, state.copyWith(subjectColorStyle: style));
+
+  Future<void> setAppIcon(String icon) async =>
+      _setStringPref(_appIconKey, icon, state.copyWith(appIcon: icon));
 
   Future<void> setHapticsEnabled(bool enabled) async =>
       _setBoolPref(_hapticsKey, enabled, state.copyWith(hapticsEnabled: enabled));

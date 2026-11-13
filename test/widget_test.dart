@@ -187,32 +187,46 @@ void main() {
       expect(initial.surfaceStyle, 'tonal');
       expect(initial.cardRadiusStyle, 'expresivo');
       expect(initial.subjectColorStyle, 'mixto');
+      expect(initial.appIcon, 'classic');
       expect(initial.hapticsEnabled, isTrue);
 
       await notifier.setUseDynamicColor(true);
       await notifier.setFrostedGlassIntensity('sutil');
       await notifier.setTertiaryColor(0xFF3366FF);
-      await notifier.setBottomNavStyle('dock');
+      await notifier.setBottomNavStyle('m3_expressive');
       await notifier.setNavLabelMode('selected');
       await notifier.setSemesterSelectorStyle('chips');
       await notifier.setEnableHorizontalSwipe(false);
       await notifier.setSurfaceStyle('oled');
       await notifier.setCardRadiusStyle('compacto');
-      await notifier.setSubjectColorStyle('borde');
+      await notifier.setSubjectColorStyle('degradado');
+      await notifier.setAppIcon('icon2');
       await notifier.setHapticsEnabled(false);
 
       var updated = container.read(settingsProvider);
       expect(updated.useDynamicColor, isTrue);
       expect(updated.frostedGlassIntensity, 'sutil');
       expect(updated.tertiaryColor, 0xFF3366FF);
-      expect(updated.bottomNavStyle, 'dock');
+      expect(updated.bottomNavStyle, 'm3_expressive');
       expect(updated.navLabelMode, 'selected');
       expect(updated.semesterSelectorStyle, 'chips');
       expect(updated.enableHorizontalSwipe, isFalse);
       expect(updated.surfaceStyle, 'oled');
       expect(updated.cardRadiusStyle, 'compacto');
-      expect(updated.subjectColorStyle, 'borde');
+      expect(updated.subjectColorStyle, 'degradado');
+      expect(updated.appIcon, 'icon2');
       expect(updated.hapticsEnabled, isFalse);
+
+      await notifier.setBottomNavStyle('one_ui');
+      expect(container.read(settingsProvider).bottomNavStyle, 'one_ui');
+      await notifier.setBottomNavStyle('ios_glass');
+      expect(container.read(settingsProvider).bottomNavStyle, 'ios_glass');
+      await notifier.setSubjectColorStyle('resplandor');
+      expect(container.read(settingsProvider).subjectColorStyle, 'resplandor');
+      await notifier.setSubjectColorStyle('neon');
+      expect(container.read(settingsProvider).subjectColorStyle, 'neon');
+      await notifier.setSubjectColorStyle('encabezado');
+      expect(container.read(settingsProvider).subjectColorStyle, 'encabezado');
 
       await notifier.setTertiaryColor(null);
       updated = container.read(settingsProvider);
@@ -263,6 +277,9 @@ void main() {
       expect(find.text('OLED puro'), findsOneWidget);
       expect(find.text('Color Destacado (Terciario)'), findsOneWidget);
 
+      await tapCentered('Google M3');
+      await tapCentered('One UI 7');
+      await tapCentered('Cristal');
       await tapCentered('Dock clásico');
       expect(find.text('Flotante + FAB'), findsOneWidget);
       expect(find.text('Cabecera'), findsOneWidget);
@@ -277,6 +294,10 @@ void main() {
       await tapCentered('Sutil');
       await tapCentered('Cuadrícula');
       expect(find.text('Columnas en Cuadrícula'), findsOneWidget);
+      await tapCentered('Degradado Izq ➔ Der');
+      await tapCentered('Resplandor');
+      await tapCentered('Neón / Doble');
+      await tapCentered('Banda Superior');
       await tapCentered('Borde');
 
       await tester.scrollUntilVisible(find.text('Ramo 1'), 180);
@@ -284,6 +305,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Ramo 1'), findsOneWidget);
       expect(find.text('Ramo 2'), findsOneWidget);
+
+      await tapCentered('Minimalista (Nuevo)');
+      expect(find.text('Clásico'), findsOneWidget);
+      expect(find.text('Minimalista (Nuevo)'), findsOneWidget);
     });
 
     testWidgets('SemestreDetailView displays subject cards and supports long-press selection',
@@ -432,6 +457,46 @@ void main() {
       expect(fabFinder, findsOneWidget);
       final context = tester.element(fabFinder);
       expect(Theme.of(context).floatingActionButtonTheme.backgroundColor, const Color(0xFFE11D48));
+    });
+
+    testWidgets('NotasApp renders Google M3 Expressive and One UI 7 bottom bars cleanly',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'bottomNavStyle': 'm3_expressive',
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            semestreProvider.overrideWith(() => _FakeSemestreNotifier()),
+          ],
+          child: const NotasApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ramos'), findsOneWidget);
+      expect(find.byTooltip('Horario'), findsOneWidget);
+      expect(find.byTooltip('Agenda'), findsOneWidget);
+      expect(find.byIcon(Icons.add_rounded), findsWidgets);
+
+      SharedPreferences.setMockInitialValues({
+        'bottomNavStyle': 'one_ui',
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            semestreProvider.overrideWith(() => _FakeSemestreNotifier()),
+          ],
+          child: const NotasApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ramos'), findsOneWidget);
+      expect(find.text('Horario'), findsOneWidget);
+      expect(find.text('Agenda'), findsOneWidget);
     });
 
     testWidgets('NotasApp horizontal PageView swipe navigates from Ramos to Horario',

@@ -307,16 +307,79 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
     final Color? customColor = hasCustomColor ? Color(ramo.color!) : null;
     final colorStyle = tokens.subjectColorStyle;
 
-    final bool showLeftStrip = customColor != null && (colorStyle == 'mixto' || colorStyle == 'franja');
+    final bool showLeftStrip = customColor != null &&
+        (colorStyle == 'mixto' || colorStyle == 'franja' || colorStyle == 'degradado' || colorStyle == 'neon');
+    final bool showTopStrip = customColor != null && colorStyle == 'encabezado';
     final bool showTint = customColor != null && (colorStyle == 'mixto' || colorStyle == 'tinte');
-    final bool showBorderColor = customColor != null && colorStyle == 'borde';
-    final bool showColorDot = customColor != null && colorStyle == 'borde';
+    final bool showBorderColor = customColor != null && (colorStyle == 'borde' || colorStyle == 'neon');
+    final bool showColorDot = customColor != null && (colorStyle == 'borde' || colorStyle == 'resplandor');
 
     final Color baseSurface = isDark ? scheme.surfaceContainerLow : scheme.surfaceContainerLowest;
     final double tintAlpha = colorStyle == 'tinte' ? (isDark ? 0.16 : 0.10) : (isDark ? 0.08 : 0.05);
     final Color unselectedColor = showTint
         ? Color.alphaBlend(customColor.withValues(alpha: tintAlpha), baseSurface)
         : baseSurface;
+
+    Gradient? cardGradient;
+    List<BoxShadow>? cardShadows;
+    if (!isSelected && customColor != null) {
+      switch (colorStyle) {
+        case 'degradado':
+          cardGradient = LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            stops: const [0.0, 0.34, 0.76, 1.0],
+            colors: [
+              customColor.withValues(alpha: isDark ? 0.50 : 0.34),
+              customColor.withValues(alpha: isDark ? 0.24 : 0.16),
+              customColor.withValues(alpha: isDark ? 0.06 : 0.03),
+              baseSurface,
+            ],
+          );
+          break;
+        case 'resplandor':
+          cardGradient = RadialGradient(
+            center: Alignment.centerLeft,
+            radius: isGrid ? 1.35 : 1.75,
+            stops: const [0.0, 0.52, 1.0],
+            colors: [
+              customColor.withValues(alpha: isDark ? 0.48 : 0.32),
+              customColor.withValues(alpha: isDark ? 0.15 : 0.09),
+              baseSurface,
+            ],
+          );
+          break;
+        case 'neon':
+          cardGradient = LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              customColor.withValues(alpha: isDark ? 0.22 : 0.13),
+              baseSurface,
+            ],
+          );
+          cardShadows = [
+            BoxShadow(
+              color: customColor.withValues(alpha: isDark ? 0.24 : 0.16),
+              blurRadius: 14,
+              offset: const Offset(0, 3),
+            ),
+          ];
+          break;
+        case 'encabezado':
+          cardGradient = LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            stops: const [0.0, 0.45, 1.0],
+            colors: [
+              customColor.withValues(alpha: isDark ? 0.34 : 0.22),
+              customColor.withValues(alpha: isDark ? 0.10 : 0.05),
+              baseSurface,
+            ],
+          );
+          break;
+      }
+    }
 
     final Color cardColor = isSelected
         ? tokens.accentContainer.withValues(alpha: 0.8)
@@ -326,17 +389,19 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         ? BorderSide(color: tokens.accentColor, width: 2)
         : BorderSide(
             color: showBorderColor
-                ? customColor.withValues(alpha: isDark ? 0.72 : 0.65)
+                ? customColor.withValues(alpha: isDark ? 0.82 : 0.72)
                 : (customColor != null && colorStyle != 'franja'
                     ? customColor.withValues(alpha: isDark ? 0.35 : 0.25)
                     : scheme.outlineVariant.withValues(alpha: isDark ? 0.5 : 0.6)),
-            width: showBorderColor ? 1.6 : 1,
+            width: showBorderColor ? 1.7 : 1,
           );
 
     final double cardRadius = isGrid && isCompact
         ? (tokens.cardRadius - 4).clamp(10.0, 18.0)
         : tokens.cardRadius;
-    final double stripWidth = isGrid ? (gridCols == 3 ? 16 : 22) : 26;
+    final double stripWidth = (colorStyle == 'degradado' || colorStyle == 'neon')
+        ? (isGrid ? 5.0 : 6.0)
+        : (isGrid ? (gridCols == 3 ? 16 : 22) : 26);
 
     Widget content;
     if (isGrid) {
@@ -467,9 +532,11 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
-        color: cardColor,
+        color: cardGradient == null ? cardColor : null,
+        gradient: cardGradient,
         borderRadius: BorderRadius.circular(cardRadius),
         border: Border.fromBorderSide(borderSide),
+        boxShadow: cardShadows,
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(
@@ -488,18 +555,44 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           onLongPress: () {
             _toggleSelection(ramo.id!);
           },
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (showLeftStrip)
-                  Container(
-                    width: stripWidth,
-                    color: customColor,
+          child: Column(
+            mainAxisSize: isGrid ? MainAxisSize.max : MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showTopStrip)
+                Container(
+                  height: 5,
+                  color: customColor,
+                ),
+              if (isGrid)
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showLeftStrip)
+                        Container(
+                          width: stripWidth,
+                          color: customColor,
+                        ),
+                      Expanded(child: content),
+                    ],
                   ),
-                Expanded(child: content),
-              ],
-            ),
+                )
+              else
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (showLeftStrip)
+                        Container(
+                          width: stripWidth,
+                          color: customColor,
+                        ),
+                      Expanded(child: content),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ),
       ),
