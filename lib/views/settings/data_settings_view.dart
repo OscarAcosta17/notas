@@ -18,7 +18,12 @@ import '../../viewmodels/semestre_provider.dart';
 import '../../viewmodels/settings_provider.dart';
 
 class DataSettingsView extends ConsumerStatefulWidget {
-  const DataSettingsView({super.key});
+  final bool openDriveRenewalOnStart;
+
+  const DataSettingsView({
+    super.key,
+    this.openDriveRenewalOnStart = false,
+  });
 
   @override
   ConsumerState<DataSettingsView> createState() => _DataSettingsViewState();
@@ -34,11 +39,23 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
     super.initState();
     _calculateCacheSize();
     _loadSyncConfig();
+    if (widget.openDriveRenewalOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openGoogleDriveSetupDialog(
+            isRenewal: true,
+            expiredMessage:
+                CloudSyncService.driveStatusNotifier.value.message,
+          );
+        }
+      });
+    }
   }
 
   Future<void> _loadSyncConfig() async {
     try {
       final cfg = await CloudSyncService.getConfig();
+      await CloudSyncService.refreshStatusNotifier();
       if (mounted) {
         setState(() => _syncConfig = cfg);
       }
@@ -197,9 +214,12 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
     }
   }
 
-  Future<void> _openGoogleDriveSetupDialog() async {
+  Future<void> _openGoogleDriveSetupDialog({
+    bool isRenewal = false,
+    String? expiredMessage,
+  }) async {
     final tokenController = TextEditingController(
-      text: _syncConfig.googleDriveRefreshToken ?? '',
+      text: isRenewal ? '' : (_syncConfig.googleDriveRefreshToken ?? ''),
     );
     final clientIdController = TextEditingController(
       text: _syncConfig.googleDriveClientId ?? '',
@@ -213,6 +233,8 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
 
     bool isVerifying = false;
     String? errorMsg;
+    final showExpiredBanner =
+        isRenewal || CloudSyncService.driveStatusNotifier.value.isExpired;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -220,12 +242,47 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
         builder: (dialogContext, setDialogState) {
           final scheme = Theme.of(dialogContext).colorScheme;
           return AlertDialog(
-            title: const Text('Conectar Google Drive'),
+            title: Text(
+              showExpiredBanner
+                  ? 'Renovar token de Google Drive'
+                  : 'Conectar Google Drive',
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (showExpiredBanner) ...[
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: scheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: scheme.onErrorContainer,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              expiredMessage ??
+                                  'Tu Refresh Token de Google Drive expiró o fue revocado. Inicia sesión nuevamente en ogd y pega el nuevo token.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: scheme.onErrorContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   Text(
                     'Sincroniza igual que el plugin de comunidad Obsidian Google Drive, sin configurar Google Cloud:',
                     style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
@@ -435,7 +492,28 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
           ),
         );
       }
+    } on GoogleDriveTokenExpiredException catch (e) {
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            action: SnackBarAction(
+              label: 'Renovar',
+              onPressed: () => _openGoogleDriveSetupDialog(
+                isRenewal: true,
+                expiredMessage: e.message,
+              ),
+            ),
+          ),
+        );
+        await _openGoogleDriveSetupDialog(
+          isRenewal: true,
+          expiredMessage: e.message,
+        );
+      }
     } catch (e) {
+      await _loadSyncConfig();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al subir a Google Drive: $e')),
@@ -463,7 +541,28 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
           ),
         );
       }
+    } on GoogleDriveTokenExpiredException catch (e) {
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            action: SnackBarAction(
+              label: 'Renovar',
+              onPressed: () => _openGoogleDriveSetupDialog(
+                isRenewal: true,
+                expiredMessage: e.message,
+              ),
+            ),
+          ),
+        );
+        await _openGoogleDriveSetupDialog(
+          isRenewal: true,
+          expiredMessage: e.message,
+        );
+      }
     } catch (e) {
+      await _loadSyncConfig();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al descargar de Google Drive: $e')),
@@ -743,64 +842,221 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
                   }
                 },
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              ValueListenableBuilder<DriveSyncStatus>(
+                valueListenable: CloudSyncService.driveStatusNotifier,
+                builder: (context, driveStatus, _) {
+                  final (pillLabel, pillBg, pillFg, pillIcon) =
+                      switch (driveStatus.state) {
+                    DriveSyncState.unconfigured => (
+                        'Sin configurar',
+                        scheme.surfaceContainerHighest,
+                        scheme.onSurfaceVariant,
+                        Icons.cloud_queue_rounded,
+                      ),
+                    DriveSyncState.syncing => (
+                        'Sincronizando...',
+                        scheme.primaryContainer,
+                        scheme.onPrimaryContainer,
+                        Icons.cloud_sync_rounded,
+                      ),
+                    DriveSyncState.synced => (
+                        driveStatus.lastSyncIso != null
+                            ? 'Sincronizado'
+                            : 'Conectado',
+                        Colors.green.withValues(alpha: 0.16),
+                        Colors.green.shade800,
+                        Icons.cloud_done_rounded,
+                      ),
+                    DriveSyncState.tokenExpired => (
+                        'Token expirado',
+                        scheme.errorContainer,
+                        scheme.onErrorContainer,
+                        Icons.cloud_off_rounded,
+                      ),
+                    DriveSyncState.error => (
+                        'Error de sync',
+                        Colors.amber.withValues(alpha: 0.2),
+                        Colors.amber.shade900,
+                        Icons.warning_amber_rounded,
+                      ),
+                  };
+
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TonalIconBadge(icon: Icons.add_to_drive_rounded, color: tokens.accentColor),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Google Drive (Obsidian Sync)',
-                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                        Row(
+                          children: [
+                            TonalIconBadge(
+                              icon: Icons.add_to_drive_rounded,
+                              color: driveStatus.isExpired
+                                  ? scheme.error
+                                  : tokens.accentColor,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Google Drive (Obsidian Sync)',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: pillBg,
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            if (driveStatus.state ==
+                                                DriveSyncState.syncing)
+                                              SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 1.8,
+                                                  color: pillFg,
+                                                ),
+                                              )
+                                            else
+                                              Icon(pillIcon,
+                                                  size: 13, color: pillFg),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              pillLabel,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: pillFg,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Text(
+                                        _syncConfig.hasGoogleDriveAuth
+                                            ? 'Carpeta NotasApp'
+                                            : 'ogd.richardxiong.com',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                              Text(
-                                _syncConfig.hasGoogleDriveAuth
-                                    ? 'Conectado a carpeta NotasApp en Google Drive'
-                                    : 'Inicia sesión con ogd.richardxiong.com y pega tu token',
-                                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-                              ),
-                            ],
-                          ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.settings_rounded),
+                              tooltip: 'Configurar Google Drive',
+                              onPressed: () => _openGoogleDriveSetupDialog(),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.settings_rounded),
-                          tooltip: 'Configurar Google Drive',
-                          onPressed: _openGoogleDriveSetupDialog,
+                        if (driveStatus.isExpired || driveStatus.isError) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: driveStatus.isExpired
+                                  ? scheme.errorContainer
+                                  : Colors.amber.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  driveStatus.isExpired
+                                      ? Icons.vpn_key_off_rounded
+                                      : Icons.error_outline_rounded,
+                                  size: 18,
+                                  color: driveStatus.isExpired
+                                      ? scheme.onErrorContainer
+                                      : Colors.amber.shade900,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    driveStatus.message ??
+                                        'La sesión de Google Drive necesita renovación.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: driveStatus.isExpired
+                                          ? scheme.onErrorContainer
+                                          : Colors.amber.shade900,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton.tonal(
+                                  onPressed: () =>
+                                      _openGoogleDriveSetupDialog(
+                                    isRenewal: true,
+                                    expiredMessage: driveStatus.message,
+                                  ),
+                                  style: FilledButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  child: const Text('Renovar Token'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (!_syncConfig.hasGoogleDriveAuth)
+                              FilledButton.tonalIcon(
+                                onPressed: _isSyncBusy
+                                    ? null
+                                    : () => _openGoogleDriveSetupDialog(),
+                                icon: const Icon(Icons.login_rounded, size: 18),
+                                label: const Text('Obtener Token Web'),
+                              ),
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  _isSyncBusy ? null : _pushGoogleDriveNow,
+                              icon: const Icon(Icons.cloud_upload_rounded,
+                                  size: 18),
+                              label: const Text('Subir a Google Drive'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed:
+                                  _isSyncBusy ? null : _pullGoogleDriveNow,
+                              icon: const Icon(Icons.cloud_download_rounded,
+                                  size: 18),
+                              label: const Text('Descargar de Google Drive'),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        if (!_syncConfig.hasGoogleDriveAuth)
-                          FilledButton.tonalIcon(
-                            onPressed: _isSyncBusy ? null : _openGoogleDriveSetupDialog,
-                            icon: const Icon(Icons.login_rounded, size: 18),
-                            label: const Text('Obtener Token Web'),
-                          ),
-                        FilledButton.tonalIcon(
-                          onPressed: _isSyncBusy ? null : _pushGoogleDriveNow,
-                          icon: const Icon(Icons.cloud_upload_rounded, size: 18),
-                          label: const Text('Subir a Google Drive'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: _isSyncBusy ? null : _pullGoogleDriveNow,
-                          icon: const Icon(Icons.cloud_download_rounded, size: 18),
-                          label: const Text('Descargar de Google Drive'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),

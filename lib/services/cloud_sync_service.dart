@@ -7,6 +7,37 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
 
+enum DriveSyncState {
+  unconfigured,
+  syncing,
+  synced,
+  tokenExpired,
+  error,
+}
+
+class DriveSyncStatus {
+  final DriveSyncState state;
+  final String? lastSyncIso;
+  final String? message;
+
+  const DriveSyncStatus({
+    this.state = DriveSyncState.unconfigured,
+    this.lastSyncIso,
+    this.message,
+  });
+
+  bool get isConfigured => state != DriveSyncState.unconfigured;
+  bool get isExpired => state == DriveSyncState.tokenExpired;
+  bool get isError => state == DriveSyncState.error;
+}
+
+class GoogleDriveTokenExpiredException implements Exception {
+  final String message;
+  const GoogleDriveTokenExpiredException(this.message);
+  @override
+  String toString() => message;
+}
+
 class CloudSyncConfig {
   final String? folderPath;
   final String? githubToken;
@@ -63,11 +94,74 @@ class CloudSyncService {
   static const _gdriveClientIdKey = 'sync_gdrive_client_id';
   static const _gdriveClientSecretKey = 'sync_gdrive_client_secret';
   static const _gdriveTokenUrlKey = 'sync_gdrive_token_url';
+  static const _gdriveTokenExpiredKey = 'sync_gdrive_token_expired';
+  static const _gdriveLastErrorKey = 'sync_gdrive_last_error';
   static const _autoSyncKey = 'sync_auto_enabled';
   static const _lastSyncKey = 'sync_last_time';
 
+  static final ValueNotifier<DriveSyncStatus> driveStatusNotifier =
+      ValueNotifier<DriveSyncStatus>(const DriveSyncStatus());
+
   static String? _cachedDriveAccessToken;
   static int _cachedDriveTokenExpiresAtMs = 0;
+
+  static Future<DriveSyncStatus> refreshStatusNotifier({
+    DriveSyncState? overrideState,
+    String? overrideMessage,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cfg = await getConfig();
+    final expired = prefs.getBool(_gdriveTokenExpiredKey) ?? false;
+    final lastError = prefs.getString(_gdriveLastErrorKey);
+
+    late DriveSyncStatus status;
+    if (!cfg.hasGoogleDriveAuth) {
+      status = const DriveSyncStatus(state: DriveSyncState.unconfigured);
+    } else if (overrideState != null) {
+      status = DriveSyncStatus(
+        state: overrideState,
+        lastSyncIso: cfg.lastSyncIso,
+        message: overrideMessage,
+      );
+    } else if (expired) {
+      status = DriveSyncStatus(
+        state: DriveSyncState.tokenExpired,
+        lastSyncIso: cfg.lastSyncIso,
+        message: lastError ??
+            'Tu token de Google Drive expiró. Toca para renovarlo.',
+      );
+    } else if (lastError != null && lastError.isNotEmpty) {
+      status = DriveSyncStatus(
+        state: DriveSyncState.error,
+        lastSyncIso: cfg.lastSyncIso,
+        message: lastError,
+      );
+    } else {
+      status = DriveSyncStatus(
+        state: DriveSyncState.synced,
+        lastSyncIso: cfg.lastSyncIso,
+        message: cfg.lastSyncIso != null
+            ? 'Sincronizado con Google Drive'
+            : 'Conectado a Google Drive',
+      );
+    }
+
+    driveStatusNotifier.value = status;
+    return status;
+  }
+
+  static Future<void> markDriveTokenExpired(String reason) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_gdriveTokenExpiredKey, true);
+    await prefs.setString(_gdriveLastErrorKey, reason);
+    await refreshStatusNotifier();
+  }
+
+  static Future<void> _clearDriveError() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_gdriveTokenExpiredKey);
+    await prefs.remove(_gdriveLastErrorKey);
+  }
 
   static const List<String> _syncedPrefKeys = [
     'isDarkMode',
@@ -103,6 +197,16 @@ class CloudSyncService {
     'aula_notify_new_files',
     'aula_notify_deadlines',
     'aula_notify_deadline_hours',
+    'settings_course_folders',
+    'settings_course_subfolders',
+    'settings_course_org_section',
+    'hidden_courses_json',
+    'settings_default_subfolder',
+    'settings_org_section',
+    'settings_skip_downloaded',
+    'settings_auto_export_links',
+    'settings_auto_export_forums',
+    'settings_preferred_extensions',
   ];
 
   static Timer? _autoSyncTimer;
@@ -211,6 +315,9 @@ class CloudSyncService {
         await prefs.setString(_gdriveTokenUrlKey, tokenUrl.trim());
       }
     }
+
+    await _clearDriveError();
+    await refreshStatusNotifier();
   }
 
   static Future<void> setGithubCredentials({
@@ -590,9 +697,20 @@ class CloudSyncService {
       if (res.statusCode == 400 || res.statusCode == 401 || res.statusCode == 403) {
         _cachedDriveAccessToken = null;
         _cachedDriveTokenExpiresAtMs = 0;
-        throw Exception(
-          'Refresh Token de Google Drive rechazado (HTTP ${res.statusCode}). Vuelve a iniciar sesión en $ogdAuthPortalUrl y pega el nuevo token.',
-        );
+        final bodyLower = res.body.toLowerCase();
+        final isRevokedOrExpired = res.statusCode == 401 ||
+            res.statusCode == 403 ||
+            bodyLower.contains('invalid_grant') ||
+            bodyLower.contains('expired') ||
+            bodyLower.contains('revoked') ||
+            bodyLower.contains('token');
+        final msg =
+            'El token de Google Drive expiró o fue revocado (HTTP ${res.statusCode}). Vuelve a iniciar sesión en $ogdAuthPortalUrl y pega el nuevo Refresh Token.';
+        await markDriveTokenExpired(msg);
+        if (isRevokedOrExpired) {
+          throw GoogleDriveTokenExpiredException(msg);
+        }
+        throw Exception(msg);
       }
 
       if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -747,140 +865,213 @@ class CloudSyncService {
   }
 
   static Future<String> uploadToGoogleDrive() async {
-    final accessToken = await refreshGoogleDriveAccessToken();
-    final prefs = await SharedPreferences.getInstance();
-    var folderId = await getOrCreateDriveVaultFolderId(accessToken);
-    var fileId = prefs.getString(_gdriveFileIdKey)?.trim();
-    if (fileId == null || fileId.isEmpty) {
-      fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
-    }
-
-    final bundle = await buildSyncBundle();
-    const encoder = JsonEncoder.withIndent('  ');
-    final jsonContent = encoder.convert(bundle);
-
-    Future<http.Response> sendMultipart({required String? targetFileId, required String parentFolderId}) {
-      final boundary = 'notas_drive_${DateTime.now().millisecondsSinceEpoch}';
-      final metadata = <String, dynamic>{
-        'name': bundleFileName,
-        'mimeType': 'application/json',
-        'properties': {
-          'vault': driveVaultName,
-          'path': bundleFileName,
-        },
-      };
-      if (targetFileId == null) {
-        metadata['parents'] = [parentFolderId];
+    await refreshStatusNotifier(
+      overrideState: DriveSyncState.syncing,
+      overrideMessage: 'Subiendo respaldo a Google Drive...',
+    );
+    try {
+      var accessToken = await refreshGoogleDriveAccessToken();
+      final prefs = await SharedPreferences.getInstance();
+      var folderId = await getOrCreateDriveVaultFolderId(accessToken);
+      var fileId = prefs.getString(_gdriveFileIdKey)?.trim();
+      if (fileId == null || fileId.isEmpty) {
+        fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
       }
 
-      final payload = StringBuffer()
-        ..write('--$boundary\r\n')
-        ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
-        ..write(jsonEncode(metadata))
-        ..write('\r\n--$boundary\r\n')
-        ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
-        ..write(jsonContent)
-        ..write('\r\n--$boundary--');
+      final bundle = await buildSyncBundle();
+      const encoder = JsonEncoder.withIndent('  ');
+      final jsonContent = encoder.convert(bundle);
 
-      final headers = {
-        'Authorization': 'Bearer $accessToken',
-        'Content-Type': 'multipart/related; boundary=$boundary',
-      };
+      Future<http.Response> sendMultipart({
+        required String? targetFileId,
+        required String parentFolderId,
+        required String bearerToken,
+      }) {
+        final boundary = 'notas_drive_${DateTime.now().millisecondsSinceEpoch}';
+        final metadata = <String, dynamic>{
+          'name': bundleFileName,
+          'mimeType': 'application/json',
+          'properties': {
+            'vault': driveVaultName,
+            'path': bundleFileName,
+          },
+        };
+        if (targetFileId == null) {
+          metadata['parents'] = [parentFolderId];
+        }
 
-      final bodyBytes = utf8.encode(payload.toString());
-      if (targetFileId != null) {
+        final payload = StringBuffer()
+          ..write('--$boundary\r\n')
+          ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+          ..write(jsonEncode(metadata))
+          ..write('\r\n--$boundary\r\n')
+          ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+          ..write(jsonContent)
+          ..write('\r\n--$boundary--');
+
+        final headers = {
+          'Authorization': 'Bearer $bearerToken',
+          'Content-Type': 'multipart/related; boundary=$boundary',
+        };
+
+        final bodyBytes = utf8.encode(payload.toString());
+        if (targetFileId != null) {
+          return http
+              .patch(
+                Uri.parse(
+                  'https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=multipart&fields=id',
+                ),
+                headers: headers,
+                body: bodyBytes,
+              )
+              .timeout(const Duration(seconds: 25));
+        }
         return http
-            .patch(
+            .post(
               Uri.parse(
-                'https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=multipart&fields=id',
+                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
               ),
               headers: headers,
               body: bodyBytes,
             )
             .timeout(const Duration(seconds: 25));
       }
-      return http
-          .post(
-            Uri.parse(
-              'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-            ),
-            headers: headers,
-            body: bodyBytes,
-          )
-          .timeout(const Duration(seconds: 25));
-    }
 
-    var res = await sendMultipart(targetFileId: fileId, parentFolderId: folderId);
-
-    // If cached fileId or folderId was deleted manually in Drive, re-verify and recreate cleanly
-    if (res.statusCode == 404) {
-      await prefs.remove(_gdriveFileIdKey);
-      folderId = await getOrCreateDriveVaultFolderId(accessToken, verify: true);
-      res = await sendMultipart(targetFileId: null, parentFolderId: folderId);
-    }
-
-    if (res.statusCode == 401 || res.statusCode == 403) {
-      _cachedDriveAccessToken = null;
-      _cachedDriveTokenExpiresAtMs = 0;
-      throw Exception(
-        'Sin permisos o sesión expirada en Google Drive (HTTP ${res.statusCode}).',
+      var res = await sendMultipart(
+        targetFileId: fileId,
+        parentFolderId: folderId,
+        bearerToken: accessToken,
       );
-    }
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Error al subir copia a Google Drive (HTTP ${res.statusCode}).');
-    }
 
-    final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-    final savedFileId = decoded['id']?.toString() ?? fileId ?? '';
-    if (savedFileId.isNotEmpty) {
-      await prefs.setString(_gdriveFileIdKey, savedFileId);
+      // Retry once if cached access token just expired
+      if (res.statusCode == 401) {
+        _cachedDriveAccessToken = null;
+        _cachedDriveTokenExpiresAtMs = 0;
+        accessToken = await refreshGoogleDriveAccessToken();
+        res = await sendMultipart(
+          targetFileId: fileId,
+          parentFolderId: folderId,
+          bearerToken: accessToken,
+        );
+      }
+
+      // If cached fileId or folderId was deleted manually in Drive, re-verify and recreate cleanly
+      if (res.statusCode == 404) {
+        await prefs.remove(_gdriveFileIdKey);
+        folderId = await getOrCreateDriveVaultFolderId(accessToken, verify: true);
+        res = await sendMultipart(
+          targetFileId: null,
+          parentFolderId: folderId,
+          bearerToken: accessToken,
+        );
+      }
+
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        _cachedDriveAccessToken = null;
+        _cachedDriveTokenExpiresAtMs = 0;
+        final msg =
+            'Sin permisos o sesión expirada en Google Drive (HTTP ${res.statusCode}). Renueva tu token.';
+        await markDriveTokenExpired(msg);
+        throw GoogleDriveTokenExpiredException(msg);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception(
+          'Error al subir copia a Google Drive (HTTP ${res.statusCode}).',
+        );
+      }
+
+      final decoded =
+          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final savedFileId = decoded['id']?.toString() ?? fileId ?? '';
+      if (savedFileId.isNotEmpty) {
+        await prefs.setString(_gdriveFileIdKey, savedFileId);
+      }
+      await _clearDriveError();
+      await _recordLastSync();
+      await refreshStatusNotifier();
+      return savedFileId;
+    } on GoogleDriveTokenExpiredException {
+      rethrow;
+    } catch (e) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_gdriveLastErrorKey, e.toString());
+      await refreshStatusNotifier();
+      rethrow;
     }
-    await _recordLastSync();
-    return savedFileId;
   }
 
   static Future<Map<String, dynamic>> downloadFromGoogleDrive() async {
-    final accessToken = await refreshGoogleDriveAccessToken();
-    final prefs = await SharedPreferences.getInstance();
-    final folderId = await getOrCreateDriveVaultFolderId(accessToken);
-    final fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
+    await refreshStatusNotifier(
+      overrideState: DriveSyncState.syncing,
+      overrideMessage: 'Descargando respaldo de Google Drive...',
+    );
+    try {
+      var accessToken = await refreshGoogleDriveAccessToken();
+      final prefs = await SharedPreferences.getInstance();
+      final folderId = await getOrCreateDriveVaultFolderId(accessToken);
+      final fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
 
-    if (fileId == null || fileId.isEmpty) {
-      throw Exception(
-        'No se encontró "$bundleFileName" en tu carpeta NotasApp de Google Drive. Sube primero desde tu otro dispositivo.',
-      );
+      if (fileId == null || fileId.isEmpty) {
+        throw Exception(
+          'No se encontró "$bundleFileName" en tu carpeta NotasApp de Google Drive. Sube primero desde tu otro dispositivo.',
+        );
+      }
+
+      var res = await http
+          .get(
+            Uri.parse(
+              'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
+            ),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 25));
+
+      if (res.statusCode == 401) {
+        _cachedDriveAccessToken = null;
+        _cachedDriveTokenExpiresAtMs = 0;
+        accessToken = await refreshGoogleDriveAccessToken();
+        res = await http
+            .get(
+              Uri.parse(
+                'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
+              ),
+              headers: {'Authorization': 'Bearer $accessToken'},
+            )
+            .timeout(const Duration(seconds: 25));
+      }
+
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        _cachedDriveAccessToken = null;
+        _cachedDriveTokenExpiresAtMs = 0;
+        final msg =
+            'Sesión de Google Drive expirada (HTTP ${res.statusCode}). Renueva tu Refresh Token.';
+        await markDriveTokenExpired(msg);
+        throw GoogleDriveTokenExpiredException(msg);
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception(
+          'No se pudo descargar de Google Drive (HTTP ${res.statusCode}).',
+        );
+      }
+
+      final rawJson = utf8.decode(res.bodyBytes);
+      if (rawJson.trim().isEmpty) {
+        throw Exception('El archivo en Google Drive está vacío.');
+      }
+
+      final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+      await prefs.setString(_gdriveFileIdKey, fileId);
+      await applySyncBundle(decoded);
+      await _clearDriveError();
+      await refreshStatusNotifier();
+      return decoded;
+    } on GoogleDriveTokenExpiredException {
+      rethrow;
+    } catch (e) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_gdriveLastErrorKey, e.toString());
+      await refreshStatusNotifier();
+      rethrow;
     }
-
-    final res = await http
-        .get(
-          Uri.parse(
-            'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
-          ),
-          headers: {'Authorization': 'Bearer $accessToken'},
-        )
-        .timeout(const Duration(seconds: 25));
-
-    if (res.statusCode == 401 || res.statusCode == 403) {
-      _cachedDriveAccessToken = null;
-      _cachedDriveTokenExpiresAtMs = 0;
-      throw Exception(
-        'Sesión de Google Drive expirada (HTTP ${res.statusCode}). Revisa tu Refresh Token.',
-      );
-    }
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception(
-        'No se pudo descargar de Google Drive (HTTP ${res.statusCode}).',
-      );
-    }
-
-    final rawJson = utf8.decode(res.bodyBytes);
-    if (rawJson.trim().isEmpty) {
-      throw Exception('El archivo en Google Drive está vacío.');
-    }
-
-    final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
-    await prefs.setString(_gdriveFileIdKey, fileId);
-    await applySyncBundle(decoded);
-    return decoded;
   }
 }

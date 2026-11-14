@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/semestre.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/updater_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
@@ -12,6 +13,7 @@ import 'aula_view.dart';
 import 'edit_semestre_dialog.dart';
 import 'horario_view.dart';
 import 'semestre_detail_view.dart';
+import 'settings/data_settings_view.dart';
 import 'settings_view.dart';
 
 class HomeView extends ConsumerStatefulWidget {
@@ -41,8 +43,52 @@ class _HomeViewState extends ConsumerState<HomeView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         UpdaterService.checkForUpdatesOnStartup(context);
+        CloudSyncService.refreshStatusNotifier().then((status) {
+          if (mounted && status.isExpired) {
+            _showDriveTokenExpiredDialog(status.message);
+          }
+        });
       }
     });
+  }
+
+  void _showDriveTokenExpiredDialog(String? message) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cloud_off_rounded, color: Colors.red),
+            SizedBox(width: 10),
+            Expanded(child: Text('Google Drive expiró')),
+          ],
+        ),
+        content: Text(
+          message ??
+              'Tu Refresh Token de Google Drive expiró o fue revocado. Vuelve a iniciar sesión para seguir sincronizando.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Más tarde'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const DataSettingsView(openDriveRenewalOnStart: true),
+                ),
+              );
+            },
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Renovar ahora'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -336,6 +382,87 @@ class _HomeViewState extends ConsumerState<HomeView> {
     );
   }
 
+  Widget _buildDriveSyncStatusButton() {
+    return ValueListenableBuilder<DriveSyncStatus>(
+      valueListenable: CloudSyncService.driveStatusNotifier,
+      builder: (context, status, _) {
+        if (status.state == DriveSyncState.unconfigured) {
+          return const SizedBox.shrink();
+        }
+        final scheme = Theme.of(context).colorScheme;
+
+        if (status.state == DriveSyncState.tokenExpired) {
+          return Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: ActionChip(
+              avatar: Icon(
+                Icons.cloud_off_rounded,
+                size: 16,
+                color: scheme.onErrorContainer,
+              ),
+              label: Text(
+                'Renovar Drive',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onErrorContainer,
+                ),
+              ),
+              backgroundColor: scheme.errorContainer,
+              side: BorderSide.none,
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const DataSettingsView(openDriveRenewalOnStart: true),
+                  ),
+                );
+              },
+            ),
+          );
+        }
+
+        if (status.state == DriveSyncState.syncing) {
+          return IconButton(
+            tooltip: 'Sincronizando con Google Drive...',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DataSettingsView()),
+              );
+            },
+            icon: const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+
+        final isErr = status.state == DriveSyncState.error;
+        return IconButton(
+          tooltip: isErr
+              ? 'Google Drive: Error de sincronización'
+              : (status.lastSyncIso != null
+                  ? 'Google Drive: Sincronizado'
+                  : 'Google Drive: Conectado'),
+          icon: Icon(
+            isErr ? Icons.cloud_sync_rounded : Icons.cloud_done_rounded,
+            color: isErr ? Colors.amber.shade700 : Colors.green.shade600,
+          ),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DataSettingsView()),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildSettingsButton() {
     return IconButton(
       tooltip: 'Configuración',
@@ -612,7 +739,10 @@ class _HomeViewState extends ConsumerState<HomeView> {
                   showInternalFab: !useCoupledFab,
                   titleWidget: useHeaderSelector ? _buildHeaderTitlePill(semestres, activeSemestre) : null,
                   headerWidget: useHeaderSelector ? null : _buildSemesterChipsBar(semestres, activeSemestre),
-                  actions: [_buildSettingsButton()],
+                  actions: [
+                    _buildDriveSyncStatusButton(),
+                    _buildSettingsButton(),
+                  ],
                   onSelectionModeChanged: (selecting) {
                     if (_isRamoSelectionMode != selecting) {
                       setState(() => _isRamoSelectionMode = selecting);

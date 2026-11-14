@@ -36,14 +36,14 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.3.0)'),
+        title: const Text('Novedades (v1.3.1)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• 🏛️ Pestaña Integrada de Aula USM (Sinergia Total): Inicia sesión en Aula USM (WebView en Android, Token/Cookie, vinculación PIN con Aula-Scrapt PC o importación automática local en Windows) para explorar cursos, descargar archivos por carpeta o semana y evitar descargas duplicadas.\n'
-            '• 🔗 Vínculo Directo con Ramos, Agenda y Obsidian: Crea ramos faltantes en NotasApp con su color y estilo Android 17 en 1 clic, envía tareas y cuestionarios con fecha límite directo a la Agenda y exporta grafos Markdown para Obsidian.\n'
-            '• 🪟 Instalador Real de Windows (.exe) y Auto-Actualización 100% Automática: Nuevo instalador oficial NotasApp-Setup.exe con accesos directos e icono Cristal A+. Al actualizar en PC, NotasApp descarga el instalador, aplica la actualización silenciosa y se reinicia sola.\n'
-            '• ☁️ Sincronización Multiplataforma Ampliada: Cloud Sync (Google Drive, Gist y Carpeta Local) ahora respalda tus mapeos de carpetas de Aula, vínculos con ramos y configuración entre Android y Windows.\n'
-            '• 💻 Incluye todas las mejoras anteriores: Google Drive Sync estilo Obsidian, 6 iconos Android 17, 5 barras de navegación y Sistema de Reporte de Fallos en GitHub Issues.',
+            '• 🏛️ Port Completo y Fiel de Aula-Scrapt USM: Crawleo completo de secciones multi-pestaña (onetopic/Tiles), aplanado automático de carpetas /mod/folder/ de Moodle, desenrollado de wrappers HTML, reparación UTF-8 de nombres, tamaños previos vía HEAD y enlaces embebidos.\n'
+            '• 📁 Explorador de Carpeta Destino y Grafos .md para Obsidian: Elige exactamente dónde guardar tus descargas (Obsidian, Documents, externa Android o Windows), configura subcarpetas por ramo y genera automáticamente "00 - Indice Aula" y "00 - Seccion" con [[wikilinks]].\n'
+            '• 🔔 Diseño Fiel de Aula-Scrapt + Sinergia NotasApp: Vista móvil y escritorio en 2 paneles, Radar de entregas, notificaciones de novedades, configuración avanzada y sincronización directa con Ramos y Agenda de NotasApp.\n'
+            '• ☁️ Indicador Vivo de Google Drive y Renovación de Token Expirado: Muestra estado sincronizado, pendiente o token expirado directamente en Inicio y Datos y Respaldo, con alerta y flujo de renovación en 1 toque.\n'
+            '• 💻 Incluye además: Instalador real de Windows (.exe) auto-actualizable, GitHub Gist, 6 iconos Android 17 y Reporte de Fallos en GitHub Issues.',
           ),
         ),
         actions: [

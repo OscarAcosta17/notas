@@ -8,6 +8,22 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.exe instalador / .zip portable)**.
 
+### [v1.3.1] - Port Completo y Fiel de Aula-Scrapt + Indicador Vivo de Google Drive
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.3.1.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.3.1/NotasApp-v1.3.1.apk) · [NotasApp-Setup-v1.3.1.exe](https://github.com/OscarAcosta17/notas/releases/download/v1.3.1/NotasApp-Setup-v1.3.1.exe) · [NotasApp-Windows-v1.3.1.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.3.1/NotasApp-Windows-v1.3.1.zip)
+
+#### ✨ Novedades y Mejoras:
+* **🏛️ Port 100% Fiel de `Aula-Scrapt USM` dentro de NotasApp:**
+  * **Scraper Completo de Moodle:** Rastrea automáticamente cursos de pestañas múltiples (`onetopic` / `Tiles`), aplana recursivamente carpetas internas `/mod/folder/` conservando la jerarquía de subcarpetas, extrae adjuntos `pluginfile.php` incrustados en resúmenes/actividades, sigue redirecciones HTTP con actualización de cookies y desenrolla wrappers HTML (`resourceworkaround`).
+  * **Explorador de Destino y Grafos Obsidian `.md`:** Selector interactivo de carpetas (`Obsidian`, `Documents/Aula-USM`, `Download/Aula-USM`, selector del sistema o carpeta interna), historial y deduplicación por SHA-256 (`.aula-scrapt-index.json`), más generación automática de notas `00 - Indice Aula - <Ramo>.md` y `00 - Seccion - <Sección>.md` con `[[wikilinks]]`, checkboxes y callouts de entregas.
+  * **UI Fiel de Aula-Scrapt + Sinergia NotasApp:** Diseño expresivo con `assets/aula_logo.png`, barra de búsqueda, filtros (`Archivos`, `Pendientes`, `Entregas`, `Todo`), Radar de entregas próximas, notificaciones de archivos nuevos, vista adaptativa de 2 paneles en escritorio y sincronización directa con Ramos y Agenda de NotasApp.
+* **☁️ Google Drive Sync con Indicador de Estado y Renovación por Token Expirado:**
+  * Nuevo indicador en vivo (`Sincronizado`, `Sincronizando...`, `Token expirado`, `Error`) tanto en la barra superior de **Inicio** como en **Ajustes ➔ Datos y Respaldo**.
+  * Detección automática de Refresh Tokens revocados/expirados (`HTTP 400/401/403` / `invalid_grant`) con alerta persistente y botón de renovación en 1 toque hacia `ogd.richardxiong.com`.
+
+---
+
 ### [v1.3.0] - Pestaña Integrada Aula USM, Sinergia Académica e Instalador Windows Auto-Actualizable
 **Fecha**: Noviembre 2026
 

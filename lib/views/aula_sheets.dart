@@ -1,310 +1,1022 @@
+import 'dart:convert';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import '../models/aula_course.dart';
-import '../models/ramo.dart';
+
 import '../services/aula_service.dart';
-import '../theme/app_theme.dart';
-import '../theme/expressive_widgets.dart';
 
-/// Android-only interactive USM SSO WebView sheet that captures `MoodleSession`
-/// via native CookieManager + optional `moodlemobile://token=` deep link.
-class AulaWebViewLoginScreen extends StatefulWidget {
-  const AulaWebViewLoginScreen({super.key});
+// ============================================================================
+// 1. Folder Picker Dialog (Port exacto de Aula-Scrapt)
+// ============================================================================
 
-  @override
-  State<AulaWebViewLoginScreen> createState() => _AulaWebViewLoginScreenState();
+Future<String?> showFolderPickerDialog(
+  BuildContext context,
+  SettingsService settings, {
+  String? initialPath,
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _FolderPickerSheet(
+      settings: settings,
+      initialPath: initialPath ?? settings.downloadRoot,
+    ),
+  );
 }
 
-class _AulaWebViewLoginScreenState extends State<AulaWebViewLoginScreen> {
-  static const _cookieChannel = MethodChannel('com.example.notas/aula_cookies');
-  late final WebViewController _controller;
-  bool _isLoading = true;
-  bool _captured = false;
-  String _currentUrl = AulaMoodleService.baseUrl;
+class _FolderPickerSheet extends StatefulWidget {
+  final SettingsService settings;
+  final String initialPath;
+
+  const _FolderPickerSheet({
+    required this.settings,
+    required this.initialPath,
+  });
+
+  @override
+  State<_FolderPickerSheet> createState() => _FolderPickerSheetState();
+}
+
+class _FolderPickerSheetState extends State<_FolderPickerSheet> {
+  String _currentPath = '';
+  String _externalRoot = '';
+  List<String> _subdirs = [];
+  bool _loading = true;
+  bool _hasPermission = true;
+  String? _errorMsg;
 
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (url) {
-            if (mounted) {
-              setState(() {
-                _isLoading = true;
-                _currentUrl = url;
-              });
-            }
-          },
-          onNavigationRequest: (request) {
-            if (request.url.startsWith('moodlemobile://token=')) {
-              _handleMobileTokenRedirect(request.url);
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-          onPageFinished: (url) async {
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-                _currentUrl = url;
-              });
-            }
-            await _tryCaptureSession(url);
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse('${AulaMoodleService.baseUrl}/login/index.php'));
+    _init();
   }
 
-  Future<void> _handleMobileTokenRedirect(String url) async {
-    if (_captured) return;
-    final raw = url.replaceFirst('moodlemobile://token=', '');
+  Future<void> _init() async {
+    _externalRoot = await widget.settings.getExternalRootPath();
+    _hasPermission = await widget.settings.hasStoragePermission();
+    var start = widget.initialPath.trim();
+    if (start.isEmpty || !await Directory(start).exists()) {
+      start = _externalRoot;
+    }
+    await _loadDir(start);
+  }
+
+  Future<void> _loadDir(String path) async {
+    setState(() {
+      _loading = true;
+      _errorMsg = null;
+    });
     try {
-      final decoded = String.fromCharCodes(Uri.decodeComponent(raw).codeUnits);
-      final normalized = decoded.contains(':::')
-          ? decoded
-          : String.fromCharCodes(Uri.decodeFull(raw).codeUnits);
-      final parts = normalized.split(':::');
-      if (parts.length >= 2 && parts[1].isNotEmpty) {
-        _captured = true;
-        if (mounted) {
-          Navigator.of(context).pop(AulaSessionData(token: parts[1]));
+      final dir = Directory(path);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final list = <String>[];
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is Directory) {
+          final name = p.basename(entity.path);
+          if (!name.startsWith('.')) {
+            list.add(name);
+          }
         }
       }
-    } catch (_) {}
+      list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      if (!mounted) return;
+      setState(() {
+        _currentPath = dir.path;
+        _subdirs = list;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _currentPath = path;
+        _subdirs = [];
+        _loading = false;
+        _errorMsg = 'No se pudo listar esta carpeta ($e)';
+      });
+    }
   }
 
-  Future<void> _tryCaptureSession(String url) async {
-    if (_captured) return;
-    if (!url.contains('aula.usm.cl') || url.contains('/login/')) return;
-
+  Future<void> _createNewFolder() async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nueva carpeta'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nombre de la carpeta',
+            hintText: 'Ej: Obsidian USM',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Crear'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    final clean = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    if (clean.isEmpty) return;
+    final newPath = p.join(_currentPath, clean);
     try {
-      final cookieStr = await _cookieChannel.invokeMethod<String>(
-            'getCookies',
-            {'url': AulaMoodleService.baseUrl},
-          ) ??
-          '';
-      final match = RegExp(r'MoodleSession=([^;\s]+)').firstMatch(cookieStr);
-      if (match == null) return;
+      await Directory(newPath).create(recursive: true);
+      await _loadDir(newPath);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo crear la carpeta: $e')),
+      );
+    }
+  }
 
-      final moodleSession = match.group(1) ?? '';
-      if (moodleSession.isEmpty) return;
+  Future<void> _pickWithSystemFileManager() async {
+    final chosen = await widget.settings.pickFolderWithSystemPicker();
+    if (chosen != null && chosen.trim().isNotEmpty && mounted) {
+      Navigator.of(context).pop(chosen.trim());
+    }
+  }
 
-      String sesskey = '';
-      try {
-        final rawJs = await _controller.runJavaScriptReturningResult(
-          '(() => { try { return (window.M && M.cfg && M.cfg.sesskey) ? M.cfg.sesskey : ""; } catch(e) { return ""; } })()',
-        );
-        sesskey = rawJs.toString().replaceAll('"', '').trim();
-      } catch (_) {}
+  Future<void> _pickInternalAppFolder() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final aulaDir = Directory(p.join(appDir.path, 'Aula-USM'));
+    if (!await aulaDir.exists()) {
+      await aulaDir.create(recursive: true);
+    }
+    if (mounted) {
+      Navigator.of(context).pop(aulaDir.path);
+    }
+  }
 
-      if (url.contains('/my') || url.contains('aula.usm.cl/?') || sesskey.isNotEmpty) {
-        _captured = true;
-        final session = AulaSessionData(
-          moodleSession: moodleSession,
-          sesskey: sesskey,
-        );
-        if (mounted) Navigator.of(context).pop(session);
+  Future<void> _jumpToQuick(List<String> segments) async {
+    final base = _externalRoot.isNotEmpty
+        ? _externalRoot
+        : await widget.settings.getExternalRootPath();
+    final target = p.joinAll([base, ...segments]);
+    try {
+      final dir = Directory(target);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
       }
-    } catch (_) {}
-  }
-
-  Future<void> _clearAndReload() async {
-    try {
-      await _cookieChannel.invokeMethod('clearCookies');
-    } catch (_) {}
-    await _controller.loadRequest(Uri.parse('${AulaMoodleService.baseUrl}/login/index.php'));
+      await _loadDir(dir.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo acceder a $target: $e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final cs = Theme.of(context).colorScheme;
+    final parent = p.dirname(_currentPath);
+    final canGoUp =
+        parent.isNotEmpty && parent != _currentPath && _currentPath.length > 3;
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.84,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: cs.outlineVariant,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+            child: Row(
+              children: [
+                Icon(Icons.folder_open_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Carpeta destino (Obsidian / Archivos)',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'Navega y elige dónde guardar tus ramos',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Nueva carpeta',
+                  onPressed: _createNewFolder,
+                  icon: const Icon(Icons.create_new_folder_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Cerrar',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+          ),
+          if (!_hasPermission && Platform.isAndroid)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.errorContainer,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lock_rounded, color: cs.onErrorContainer, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Falta permiso de archivos en Android para leer carpetas externas.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await widget.settings.requestStoragePermission();
+                      _hasPermission =
+                          await widget.settings.hasStoragePermission();
+                      await _loadDir(_currentPath);
+                    },
+                    child: const Text('Permitir'),
+                  ),
+                ],
+              ),
+            ),
+          // Quick shortcut chips
+          SizedBox(
+            height: 44,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.auto_stories_rounded, size: 16),
+                  label: const Text('Obsidian'),
+                  onPressed: () => _jumpToQuick(
+                    Platform.isAndroid ? ['Documents', 'Obsidian'] : ['Obsidian'],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: const Icon(Icons.school_rounded, size: 16),
+                  label: const Text('Documents/Aula-USM'),
+                  onPressed: () => _jumpToQuick(
+                    Platform.isAndroid
+                        ? ['Documents', 'Aula-USM']
+                        : ['Aula-USM'],
+                  ),
+                ),
+                if (Platform.isAndroid) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.download_rounded, size: 16),
+                    label: const Text('Download/Aula-USM'),
+                    onPressed: () => _jumpToQuick(['Download', 'Aula-USM']),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: const Icon(Icons.drive_folder_upload_rounded, size: 16),
+                  label: Text(
+                    Platform.isAndroid ? 'Archivos Android' : 'Explorador PC',
+                  ),
+                  onPressed: _pickWithSystemFileManager,
+                ),
+                const SizedBox(width: 8),
+                ActionChip(
+                  avatar: const Icon(Icons.inventory_2_outlined, size: 16),
+                  label: const Text('Carpeta interna'),
+                  onPressed: _pickInternalAppFolder,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Current path bar
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                if (canGoUp)
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Subir un nivel',
+                    onPressed: () => _loadDir(parent),
+                    icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+                  )
+                else
+                  Icon(Icons.sd_storage_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _currentPath,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMsg != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.folder_off_rounded,
+                                  size: 40, color: cs.error),
+                              const SizedBox(height: 10),
+                              Text(_errorMsg!, textAlign: TextAlign.center),
+                              const SizedBox(height: 12),
+                              FilledButton.tonalIcon(
+                                onPressed: _pickWithSystemFileManager,
+                                icon: const Icon(Icons.folder_open_rounded),
+                                label: const Text('Usar selector del sistema'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : _subdirs.isEmpty
+                        ? Center(
+                            child: Text(
+                              'Sin subcarpetas aquí.\nPuedes usar esta carpeta o crear una nueva arriba.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            itemCount: _subdirs.length,
+                            itemBuilder: (_, i) {
+                              final sub = _subdirs[i];
+                              return ListTile(
+                                dense: true,
+                                leading: Icon(Icons.folder_rounded,
+                                    color: cs.primary),
+                                title: Text(
+                                  sub,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                trailing: const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18),
+                                onTap: () =>
+                                    _loadDir(p.join(_currentPath, sub)),
+                              );
+                            },
+                          ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _currentPath.isEmpty
+                      ? null
+                      : () => Navigator.of(context).pop(_currentPath),
+                  icon: const Icon(Icons.check_rounded),
+                  label: Text(
+                    'Usar "${p.basename(_currentPath).isEmpty ? _currentPath : p.basename(_currentPath)}"',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 2. Token & Cookie Login Dialogs
+// ============================================================================
+
+Future<bool> showTokenLoginDialog(
+  BuildContext context,
+  MoodleService moodle,
+) async {
+  final ctrl = TextEditingController();
+  var loading = false;
+  String? errorMsg;
+
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.vpn_key_rounded),
+              SizedBox(width: 10),
+              Text('Token de WebService'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Pega tu token personal de Moodle desde Aula USM → Preferencias → Claves de seguridad (Moodle mobile web service).',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: () {
+                  launchUrl(
+                    Uri.parse('${MoodleService.baseUrl}/user/managetoken.php'),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text('Abrir claves de seguridad en navegador'),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: ctrl,
+                decoration: const InputDecoration(
+                  labelText: 'Token (wstoken)',
+                  hintText: 'Ej: 3a9e8b...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(
+                    color: Theme.of(ctx).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: loading ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      setState(() {
+                        loading = true;
+                        errorMsg = null;
+                      });
+                      try {
+                        await moodle.loginWithToken(ctrl.text);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        setState(() {
+                          loading = false;
+                          errorMsg = e.toString();
+                        });
+                      }
+                    },
+              child: loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Validar'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  return result == true;
+}
+
+Future<bool> showCookieLoginDialog(
+  BuildContext context,
+  MoodleService moodle,
+) async {
+  final ctrl = TextEditingController();
+  var loading = false;
+  String? errorMsg;
+
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.cookie_rounded),
+              SizedBox(width: 10),
+              Text('Cookie MoodleSession'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Útil en PC o si prefieres iniciar sesión en tu navegador. Pega la cookie completa o solo el valor de MoodleSession.',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Cookie / MoodleSession',
+                  hintText: 'MoodleSession=abc123...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (errorMsg != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  errorMsg!,
+                  style: TextStyle(
+                    color: Theme.of(ctx).colorScheme.error,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: loading ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      setState(() {
+                        loading = true;
+                        errorMsg = null;
+                      });
+                      try {
+                        await moodle.loginWithCookie(ctrl.text);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        setState(() {
+                          loading = false;
+                          errorMsg = e.toString();
+                        });
+                      }
+                    },
+              child: loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Conectar'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  return result == true;
+}
+
+// ============================================================================
+// 3. WebView Login Screen & Authenticated Web Viewer
+// ============================================================================
+
+class WebViewLoginScreen extends StatefulWidget {
+  final MoodleService moodle;
+
+  const WebViewLoginScreen({super.key, required this.moodle});
+
+  @override
+  State<WebViewLoginScreen> createState() => _WebViewLoginScreenState();
+}
+
+class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
+  static const MethodChannel _cookieChannel =
+      MethodChannel('com.example.notas/aula_cookies');
+
+  WebViewController? _controller;
+  bool _isChecking = false;
+  bool _captured = false;
+  String _statusText = 'Cargando inicio de sesión USM...';
+
+  bool get _supportsEmbeddedWebView =>
+      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_supportsEmbeddedWebView) {
+      _initWebView();
+    }
+  }
+
+  void _initWebView() {
+    final ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (url) async {
+            if (!mounted || _captured) return;
+            setState(() => _statusText = url);
+            if (url.startsWith(MoodleService.baseUrl) &&
+                !url.contains('/login/')) {
+              await _attemptCapture(url);
+            }
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse('${MoodleService.baseUrl}/login/index.php'));
+    _controller = ctrl;
+  }
+
+  Future<void> _attemptCapture(String url) async {
+    if (_isChecking || _captured) return;
+    setState(() => _isChecking = true);
+    try {
+      var capturedCookie = '';
+
+      // 1) Native Android CookieManager channel (includes HttpOnly MoodleSession)
+      if (Platform.isAndroid) {
+        try {
+          final nativeCookies = await _cookieChannel.invokeMethod<String>(
+            'getCookies',
+            {'url': MoodleService.baseUrl},
+          );
+          if (nativeCookies != null && nativeCookies.trim().isNotEmpty) {
+            capturedCookie = nativeCookies.trim();
+          }
+        } catch (_) {}
+      }
+
+      // 2) Fallback JS document.cookie
+      if (capturedCookie.isEmpty && _controller != null) {
+        final rawJs = await _controller!.runJavaScriptReturningResult(
+          'document.cookie',
+        );
+        final jsStr = rawJs.toString().replaceAll('"', '').trim();
+        if (jsStr.isNotEmpty) capturedCookie = jsStr;
+      }
+
+      if (capturedCookie.contains('MoodleSession')) {
+        await widget.moodle.loginWithCookie(capturedCookie);
+        _captured = true;
+        if (mounted) Navigator.of(context).pop(true);
+        return;
+      }
+
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_supportsEmbeddedWebView) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Inicio de sesión Aula USM')),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.desktop_windows_rounded, size: 54),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'En Windows usa Token de WebService o Cookie MoodleSession',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Puedes abrir Aula USM en tu navegador para obtener tu token o sincronizar directamente desde tu celular Android vía Google Drive.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: () => launchUrl(
+                      Uri.parse('${MoodleService.baseUrl}/user/managetoken.php'),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Abrir Aula USM en navegador'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: FrostedAppBar(
+      appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Acceso Institucional USM', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text('Aula USM · Navegador', style: TextStyle(fontSize: 16)),
             Text(
-              _currentUrl,
+              _statusText,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+              style: const TextStyle(fontSize: 11),
             ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Capturar sesión ahora',
-            onPressed: () => _tryCaptureSession('${AulaMoodleService.baseUrl}/my/'),
-            icon: const Icon(Icons.check_circle_outline_rounded),
-          ),
-          IconButton(
-            tooltip: 'Reiniciar sesión web',
-            onPressed: _clearAndReload,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (_isLoading) const LinearProgressIndicator(minHeight: 3),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
-            child: Text(
-              'Inicia sesión con tu cuenta USM. Al llegar a tu Área personal la conexión se detectará automáticamente.',
-              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSecondaryContainer),
+          if (_isChecking)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            TextButton.icon(
+              onPressed: () => _attemptCapture('${MoodleService.baseUrl}/my/'),
+              icon: const Icon(Icons.verified_user_rounded, size: 18),
+              label: const Text('Ya inicié'),
             ),
-          ),
-          Expanded(child: WebViewWidget(controller: _controller)),
         ],
       ),
+      body: _controller == null
+          ? const Center(child: CircularProgressIndicator())
+          : WebViewWidget(controller: _controller!),
     );
   }
 }
 
-/// Auth & PC pairing modal sheet supporting Token, MoodleSession cookie, PIN pairing, and local PC import.
-class AulaAuthSheet extends StatefulWidget {
-  final AulaSessionData currentSession;
-  final AulaSettingsService settingsService;
-  final Future<void> Function(AulaSessionData session, {Map<int, String>? extraFolders}) onAuthenticated;
+class AuthenticatedWebViewerScreen extends StatefulWidget {
+  final String url;
+  final String title;
+  final String cookie;
 
-  const AulaAuthSheet({
+  const AuthenticatedWebViewerScreen({
     super.key,
-    required this.currentSession,
-    required this.settingsService,
-    required this.onAuthenticated,
+    required this.url,
+    required this.title,
+    this.cookie = '',
   });
 
   @override
-  State<AulaAuthSheet> createState() => _AulaAuthSheetState();
+  State<AuthenticatedWebViewerScreen> createState() =>
+      _AuthenticatedWebViewerScreenState();
 }
 
-class _AulaAuthSheetState extends State<AulaAuthSheet> {
-  late final TextEditingController _tokenController;
-  late final TextEditingController _cookieController;
-  late final TextEditingController _hostController;
-  late final TextEditingController _pinController;
+class _AuthenticatedWebViewerScreenState
+    extends State<AuthenticatedWebViewerScreen> {
+  WebViewController? _controller;
+  bool _loading = true;
 
-  int _mode = 0; // 0: Token/Cookie, 1: PIN Pairing
-  bool _busy = false;
+  bool get _supportsEmbeddedWebView =>
+      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_supportsEmbeddedWebView) {
+      _initWebView();
+    } else {
+      _loading = false;
+    }
+  }
+
+  Future<void> _initWebView() async {
+    if (widget.cookie.isNotEmpty) {
+      final manager = WebViewCookieManager();
+      for (final part in widget.cookie.split(';')) {
+        final eq = part.indexOf('=');
+        if (eq > 0) {
+          final name = part.substring(0, eq).trim();
+          final value = part.substring(eq + 1).trim();
+          if (name.isNotEmpty) {
+            await manager.setCookie(WebViewCookie(
+              name: name,
+              value: value,
+              domain: 'aula.usm.cl',
+              path: '/',
+            ));
+          }
+        }
+      }
+    }
+
+    final ctrl = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (_) {
+            if (mounted) setState(() => _loading = false);
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+
+    if (mounted) {
+      setState(() => _controller = ctrl);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title, overflow: TextOverflow.ellipsis),
+        actions: [
+          IconButton(
+            tooltip: 'Abrir en navegador externo',
+            onPressed: () => launchUrl(
+              Uri.parse(widget.url),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(Icons.open_in_new_rounded),
+          ),
+        ],
+      ),
+      body: !_supportsEmbeddedWebView
+          ? Center(
+              child: FilledButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse(widget.url),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Icons.open_in_browser_rounded),
+                label: const Text('Abrir actividad en tu navegador'),
+              ),
+            )
+          : Stack(
+              children: [
+                if (_controller != null)
+                  WebViewWidget(controller: _controller!),
+                if (_loading)
+                  const LinearProgressIndicator(minHeight: 3),
+              ],
+            ),
+    );
+  }
+}
+
+// ============================================================================
+// 4. PC Pairing Sheet (PIN / QR code -> GET /api/pair/claim?pin=...)
+// ============================================================================
+
+Future<bool> showPairingSheet(
+  BuildContext context,
+  MoodleService moodle,
+  SettingsService settings,
+) async {
+  final res = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _PairingModalSheet(moodle: moodle, settings: settings),
+  );
+  return res == true;
+}
+
+class _PairingModalSheet extends StatefulWidget {
+  final MoodleService moodle;
+  final SettingsService settings;
+
+  const _PairingModalSheet({
+    required this.moodle,
+    required this.settings,
+  });
+
+  @override
+  State<_PairingModalSheet> createState() => _PairingModalSheetState();
+}
+
+class _PairingModalSheetState extends State<_PairingModalSheet> {
+  final _urlCtrl = TextEditingController(text: '192.168.1.50:8000');
+  final _pinCtrl = TextEditingController();
+  bool _loading = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _tokenController = TextEditingController(text: widget.currentSession.token);
-    _cookieController = TextEditingController(text: widget.currentSession.moodleSession);
-    _hostController = TextEditingController(text: 'http://192.168.1.');
-    _pinController = TextEditingController();
-  }
-
-  @override
   void dispose() {
-    _tokenController.dispose();
-    _cookieController.dispose();
-    _hostController.dispose();
-    _pinController.dispose();
+    _urlCtrl.dispose();
+    _pinCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _submitManual() async {
-    final token = _tokenController.text.trim();
-    final cookie = _cookieController.text.trim();
-    if (token.isEmpty && cookie.isEmpty) {
-      setState(() => _error = 'Ingresa un Token WebService o tu cookie MoodleSession.');
-      return;
-    }
+  Future<void> _scanQr() async {
+    final scanned = await widget.settings.scanQrCode();
+    if (scanned == null || scanned.trim().isEmpty) return;
 
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
+    final raw = scanned.trim();
     try {
-      final candidate = AulaSessionData(
-        token: token,
-        moodleSession: cookie,
-      );
-      final moodle = AulaMoodleService(session: candidate);
-      final validated = await moodle.validateSession();
-      await widget.onAuthenticated(validated);
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
-        });
-      }
-    }
-  }
-
-  Future<void> _submitPairing() async {
-    final host = _hostController.text.trim();
-    final pin = _pinController.text.trim();
-    if (host.isEmpty || pin.isEmpty) {
-      setState(() => _error = 'Ingresa la IP:Puerto del servidor Aula-Scrapt y el PIN de 6 dígitos.');
-      return;
-    }
-
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-
-    try {
-      final moodle = AulaMoodleService(session: const AulaSessionData());
-      final claimed = await moodle.claimPairingPin(serverUrl: host, pin: pin);
-      final validated = await moodle.validateSession();
-      await widget.onAuthenticated(validated, extraFolders: claimed.folders);
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
-        });
-      }
-    }
-  }
-
-  Future<void> _importFromLocalDesktop() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final imported = await widget.settingsService.detectAndImportLocalDesktopData(
-        overwriteExistingSession: true,
-      );
-      if (imported == null || !imported.foundSession) {
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _error = 'No se encontró session.json activo en tu carpeta local de Aula-Scrapt.';
-          });
+      if (raw.startsWith('{')) {
+        final jsonMap = jsonDecode(raw) as Map<String, dynamic>;
+        final u = (jsonMap['url'] ?? jsonMap['server'] ?? '').toString();
+        final pin = (jsonMap['pin'] ?? '').toString();
+        if (u.isNotEmpty) _urlCtrl.text = u;
+        if (pin.isNotEmpty) _pinCtrl.text = pin;
+      } else {
+        final uri = Uri.tryParse(raw);
+        if (uri != null && uri.queryParameters.containsKey('pin')) {
+          final hostUrl = uri.queryParameters['url'] ??
+              '${uri.scheme.startsWith('http') ? uri.scheme : 'http'}://${uri.authority}';
+          _urlCtrl.text = hostUrl;
+          _pinCtrl.text = uri.queryParameters['pin'] ?? '';
         }
-        return;
       }
-      final reloaded = await widget.settingsService.loadSession();
-      final moodle = AulaMoodleService(session: reloaded);
-      final validated = await moodle.validateSession();
-      await widget.onAuthenticated(validated);
+      if (_pinCtrl.text.trim().isNotEmpty) {
+        await _claim();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _claim() async {
+    if (_urlCtrl.text.trim().isEmpty || _pinCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Ingresa dirección del PC y PIN.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await widget.moodle.loginFromPairingClaim(
+        _urlCtrl.text.trim(),
+        _pinCtrl.text.trim(),
+      );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
         setState(() {
-          _busy = false;
-          _error = e.toString().replaceFirst('Exception: ', '');
+          _loading = false;
+          _error = e.toString();
         });
       }
     }
@@ -312,347 +1024,96 @@ class _AulaAuthSheetState extends State<AulaAuthSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.visualTokens;
+    final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                TonalIconBadge(icon: Icons.key_rounded, color: tokens.accentColor, size: 42),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Conectar Aula USM',
-                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                      Text(
-                        'Autenticación mediante Token, Cookie o Vinculación PC',
-                        style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (Platform.isWindows) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonalIcon(
-                  onPressed: _busy ? null : _importFromLocalDesktop,
-                  icon: const Icon(Icons.computer_rounded),
-                  label: const Text('Importar sesión de Aula-Scrapt PC'),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, icon: Icon(Icons.vpn_key_rounded), label: Text('Token / Cookie')),
-                ButtonSegment(value: 1, icon: Icon(Icons.phonelink_rounded), label: Text('Vincular PIN')),
-              ],
-              selected: {_mode},
-              onSelectionChanged: (sel) => setState(() {
-                _mode = sel.first;
-                _error = null;
-              }),
-            ),
-            const SizedBox(height: 16),
-            if (_mode == 0) ...[
-              TextField(
-                controller: _tokenController,
-                decoration: InputDecoration(
-                  labelText: 'Token WebService (wstoken)',
-                  hintText: 'Recomendado · encuéntralo en Aula -> Preferencias -> Claves de seguridad',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                  prefixIcon: const Icon(Icons.password_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _cookieController,
-                decoration: InputDecoration(
-                  labelText: 'Cookie MoodleSession (opcional)',
-                  hintText: 'Opcional para scraping de páginas web',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                  prefixIcon: const Icon(Icons.cookie_outlined),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => launchUrl(
-                    Uri.parse('${AulaMoodleService.baseUrl}/user/managetoken.php'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 17),
-                  label: const Text('Abrir Claves de Seguridad en aula.usm.cl'),
-                ),
-              ),
-            ] else ...[
-              TextField(
-                controller: _hostController,
-                decoration: InputDecoration(
-                  labelText: 'URL / IP de Aula-Scrapt PC',
-                  hintText: 'Ej: http://192.168.1.45:5173',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                  prefixIcon: const Icon(Icons.wifi_rounded),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _pinController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'PIN de vinculación (6 dígitos)',
-                  hintText: 'Generado desde "Vincular Móvil" en Aula-Scrapt Web',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                  prefixIcon: const Icon(Icons.pin_rounded),
-                ),
-              ),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
-                ),
-                child: Text(
-                  _error!,
-                  style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onErrorContainer),
-                ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _busy ? null : (_mode == 0 ? _submitManual : _submitPairing),
-                icon: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.check_rounded),
-                label: Text(_mode == 0 ? 'Validar y Conectar' : 'Reclamar Sesión por PIN'),
-              ),
-            ),
-          ],
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
-      ),
-    );
-  }
-}
-
-/// Configure course folder mapping, section organization, visibility, and NotasApp Ramo link.
-class AulaFolderConfigSheet extends StatefulWidget {
-  final MoodleCourse course;
-  final String currentFolder;
-  final String currentSubfolder;
-  final bool organizeBySections;
-  final List<Ramo> availableRamos;
-  final int? linkedRamoId;
-  final Future<void> Function({
-    required String folderName,
-    required String subfolder,
-    required bool orgBySections,
-    required bool hidden,
-    required int? linkedRamoId,
-  }) onSave;
-
-  const AulaFolderConfigSheet({
-    super.key,
-    required this.course,
-    required this.currentFolder,
-    required this.currentSubfolder,
-    required this.organizeBySections,
-    required this.availableRamos,
-    required this.linkedRamoId,
-    required this.onSave,
-  });
-
-  @override
-  State<AulaFolderConfigSheet> createState() => _AulaFolderConfigSheetState();
-}
-
-class _AulaFolderConfigSheetState extends State<AulaFolderConfigSheet> {
-  late final TextEditingController _folderCtrl;
-  late final TextEditingController _subCtrl;
-  late bool _orgSections;
-  late bool _hidden;
-  int? _linkedRamoId;
-
-  @override
-  void initState() {
-    super.initState();
-    _folderCtrl = TextEditingController(
-      text: widget.currentFolder.isNotEmpty ? widget.currentFolder : widget.course.cleanName,
-    );
-    _subCtrl = TextEditingController(text: widget.currentSubfolder);
-    _orgSections = widget.organizeBySections;
-    _hidden = widget.course.isHidden;
-    _linkedRamoId = widget.linkedRamoId;
-  }
-
-  @override
-  void dispose() {
-    _folderCtrl.dispose();
-    _subCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.visualTokens;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
-      child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
-                TonalIconBadge(icon: Icons.folder_copy_rounded, color: tokens.accentColor, size: 42),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Configurar Curso',
-                          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                      Text(
-                        widget.course.cleanName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ],
+                Icon(Icons.qr_code_scanner_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Vincular desde Aula-Scrapt PC',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                   ),
                 ),
+                if (Platform.isAndroid)
+                  FilledButton.tonalIcon(
+                    onPressed: _loading ? null : _scanQr,
+                    icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                    label: const Text('QR'),
+                  ),
               ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Importa tu sesión activa, ramos y mapeos de Obsidian desde el computador en la misma red Wi-Fi.',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: _folderCtrl,
-              decoration: InputDecoration(
-                labelText: 'Carpeta de descarga del curso',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                prefixIcon: const Icon(Icons.folder_outlined),
+              controller: _urlCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Dirección IP y puerto del PC',
+                hintText: '192.168.1.50:8000',
+                prefixIcon: Icon(Icons.lan_rounded),
+                border: OutlineInputBorder(),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                ActionChip(
-                  label: Text(widget.course.cleanName),
-                  onPressed: () => setState(() => _folderCtrl.text = widget.course.cleanName),
-                ),
-                if (widget.course.courseCode != null)
-                  ActionChip(
-                    label: Text(widget.course.courseCode!),
-                    onPressed: () => setState(() => _folderCtrl.text = widget.course.courseCode!),
-                  ),
-              ],
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _subCtrl,
-              decoration: InputDecoration(
-                labelText: 'Subcarpeta personalizada (opcional)',
-                hintText: 'Ej: Material / 2026-2',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                prefixIcon: const Icon(Icons.create_new_folder_outlined),
+              controller: _pinCtrl,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                labelText: 'PIN de emparejamiento',
+                hintText: 'Ej: 4F9A',
+                prefixIcon: Icon(Icons.pin_rounded),
+                border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 14),
-            if (widget.availableRamos.isNotEmpty) ...[
-              DropdownButtonFormField<int?>(
-                initialValue: widget.availableRamos.any((r) => r.id == _linkedRamoId) ? _linkedRamoId : null,
-                decoration: InputDecoration(
-                  labelText: 'Ramo vinculado en NotasApp',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppTheme.radiusSmall)),
-                  prefixIcon: const Icon(Icons.school_rounded),
-                ),
-                items: [
-                  const DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text('Detección automática'),
-                  ),
-                  for (final ramo in widget.availableRamos)
-                    DropdownMenuItem<int?>(
-                      value: ramo.id,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: ramo.color != null ? Color(ramo.color!) : tokens.accentColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(ramo.nombre, overflow: TextOverflow.ellipsis)),
-                        ],
-                      ),
-                    ),
-                ],
-                onChanged: (val) => setState(() => _linkedRamoId = val),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: TextStyle(color: cs.error, fontSize: 12.5),
               ),
-              const SizedBox(height: 12),
             ],
-            ExpressiveGroupedSection(
-              margin: EdgeInsets.zero,
-              children: [
-                SwitchListTile(
-                  title: const Text('Organizar en subcarpetas por sección'),
-                  subtitle: const Text('Guarda cada archivo dentro de la carpeta de su semana/unidad'),
-                  value: _orgSections,
-                  onChanged: (v) => setState(() => _orgSections = v),
-                ),
-                SwitchListTile(
-                  title: const Text('Ocultar curso de la lista principal'),
-                  subtitle: const Text('Útil para cursos antiguos o coordinaciones'),
-                  value: _hidden,
-                  onChanged: (v) => setState(() => _hidden = v),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () async {
-                  await widget.onSave(
-                    folderName: _folderCtrl.text.trim(),
-                    subfolder: _subCtrl.text.trim(),
-                    orgBySections: _orgSections,
-                    hidden: _hidden,
-                    linkedRamoId: _linkedRamoId,
-                  );
-                  if (context.mounted) Navigator.of(context).pop(true);
-                },
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('Guardar Configuración'),
+                onPressed: _loading ? null : _claim,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.link_rounded),
+                label: Text(_loading ? 'Conectando...' : 'Conectar con PC'),
               ),
             ),
           ],
@@ -662,196 +1123,178 @@ class _AulaFolderConfigSheetState extends State<AulaFolderConfigSheet> {
   }
 }
 
-/// Global preferences sheet for Aula USM downloads, Obsidian Vault export, notifications, and logout.
-class AulaGlobalSettingsSheet extends StatefulWidget {
-  final AulaSettingsService settingsService;
-  final String downloadRoot;
-  final String? obsidianVaultPath;
-  final bool notifyNewFiles;
-  final bool notifyDeadlines;
-  final int deadlineHours;
-  final List<MoodleCourse> hiddenCourses;
-  final Future<void> Function(int courseId) onUnhideCourse;
-  final Future<void> Function() onLogout;
-  final VoidCallback onSettingsChanged;
+// ============================================================================
+// 5. Notifications Sheet (Port exacto de Aula-Scrapt)
+// ============================================================================
 
-  const AulaGlobalSettingsSheet({
-    super.key,
-    required this.settingsService,
-    required this.downloadRoot,
-    required this.obsidianVaultPath,
-    required this.notifyNewFiles,
-    required this.notifyDeadlines,
-    required this.deadlineHours,
-    required this.hiddenCourses,
-    required this.onUnhideCourse,
-    required this.onLogout,
-    required this.onSettingsChanged,
-  });
-
-  @override
-  State<AulaGlobalSettingsSheet> createState() => _AulaGlobalSettingsSheetState();
+Future<void> showNotificationsSheet(
+  BuildContext context,
+  SettingsService settings,
+) async {
+  await settings.markAllNotificationsRead();
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _NotificationsSheetContent(settings: settings),
+  );
 }
 
-class _AulaGlobalSettingsSheetState extends State<AulaGlobalSettingsSheet> {
-  late String _dlRoot;
-  String? _vaultPath;
-  late bool _notifyNewFiles;
-  late bool _notifyDeadlines;
-  late int _deadlineHours;
+class _NotificationsSheetContent extends StatefulWidget {
+  final SettingsService settings;
+
+  const _NotificationsSheetContent({required this.settings});
 
   @override
-  void initState() {
-    super.initState();
-    _dlRoot = widget.downloadRoot;
-    _vaultPath = widget.obsidianVaultPath;
-    _notifyNewFiles = widget.notifyNewFiles;
-    _notifyDeadlines = widget.notifyDeadlines;
-    _deadlineHours = widget.deadlineHours;
-  }
+  State<_NotificationsSheetContent> createState() =>
+      _NotificationsSheetContentState();
+}
 
-  Future<void> _pickDownloadRoot() async {
-    final picked = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Seleccionar carpeta raíz de descargas de Aula USM',
-      initialDirectory: _dlRoot,
-    );
-    if (picked != null && picked.isNotEmpty) {
-      await widget.settingsService.setDownloadRoot(picked);
-      setState(() => _dlRoot = picked);
-      widget.onSettingsChanged();
-    }
-  }
-
-  Future<void> _pickObsidianVault() async {
-    final picked = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Seleccionar bóveda de Obsidian',
-      initialDirectory: _vaultPath,
-    );
-    if (picked != null && picked.isNotEmpty) {
-      await widget.settingsService.setObsidianVaultPath(picked);
-      setState(() => _vaultPath = picked);
-      widget.onSettingsChanged();
-    }
-  }
-
+class _NotificationsSheetContentState
+    extends State<_NotificationsSheetContent> {
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = context.visualTokens;
+    final cs = Theme.of(context).colorScheme;
+    final list = widget.settings.notifications;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                TonalIconBadge(icon: Icons.tune_rounded, color: tokens.accentColor, size: 42),
-                const SizedBox(width: 12),
-                Text('Ajustes de Aula USM',
-                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-              ],
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.72,
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: cs.outlineVariant,
+              borderRadius: BorderRadius.circular(2),
             ),
-            const SizedBox(height: 16),
-            ExpressiveGroupedSection(
-              margin: EdgeInsets.zero,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 8),
+            child: Row(
               children: [
-                ListTile(
-                  leading: TonalIconBadge(icon: Icons.folder_rounded, color: tokens.accentColor),
-                  title: const Text('Carpeta de Descargas'),
-                  subtitle: Text(_dlRoot, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  trailing: const Icon(Icons.edit_rounded, size: 18),
-                  onTap: _pickDownloadRoot,
-                ),
-                ListTile(
-                  leading: TonalIconBadge(icon: Icons.hub_rounded, color: tokens.accentColor),
-                  title: const Text('Bóveda de Obsidian (.md)'),
-                  subtitle: Text(
-                    _vaultPath ?? 'Usar subcarpeta dentro de Descargas',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: _vaultPath != null
-                      ? IconButton(
-                          tooltip: 'Limpiar',
-                          icon: const Icon(Icons.clear_rounded),
-                          onPressed: () async {
-                            await widget.settingsService.setObsidianVaultPath(null);
-                            setState(() => _vaultPath = null);
-                            widget.onSettingsChanged();
-                          },
-                        )
-                      : const Icon(Icons.edit_rounded, size: 18),
-                  onTap: _pickObsidianVault,
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            ExpressiveGroupedSection(
-              margin: EdgeInsets.zero,
-              children: [
-                SwitchListTile(
-                  title: const Text('Avisar archivos nuevos en Aula'),
-                  value: _notifyNewFiles,
-                  onChanged: (v) async {
-                    setState(() => _notifyNewFiles = v);
-                    await widget.settingsService.saveNotificationSettings(notifyNewFiles: v);
-                    widget.onSettingsChanged();
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Programar recordatorios al importar entregas'),
-                  subtitle: Text('Con $_deadlineHours horas de anticipación'),
-                  value: _notifyDeadlines,
-                  onChanged: (v) async {
-                    setState(() => _notifyDeadlines = v);
-                    await widget.settingsService.saveNotificationSettings(notifyDeadlines: v);
-                    widget.onSettingsChanged();
-                  },
-                ),
-              ],
-            ),
-            if (widget.hiddenCourses.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text('Cursos ocultos (${widget.hiddenCourses.length})',
-                  style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final c in widget.hiddenCourses)
-                    InputChip(
-                      label: Text(c.cleanName),
-                      deleteIcon: const Icon(Icons.visibility_rounded, size: 16),
-                      onDeleted: () async {
-                        await widget.onUnhideCourse(c.id);
-                        if (context.mounted) Navigator.of(context).pop();
-                      },
+                Icon(Icons.notifications_active_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Notificaciones (${list.length})',
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
                     ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.colorScheme.error,
-                  side: BorderSide(color: theme.colorScheme.error.withValues(alpha: 0.45)),
+                  ),
                 ),
-                onPressed: () async {
-                  await widget.onLogout();
-                  if (context.mounted) Navigator.of(context).pop();
-                },
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('Cerrar sesión de Aula USM'),
-              ),
+                if (list.isNotEmpty)
+                  TextButton(
+                    onPressed: () async {
+                      await widget.settings.clearNotifications();
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text('Limpiar'),
+                  ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.notifications_none_rounded,
+                          size: 46,
+                          color: cs.outline,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Sin notificaciones todavía',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Aquí verás archivos nuevos, entregas próximas y descargas.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final n = list[i];
+                      final (icon, tint) = switch (n.type) {
+                        'new_file' => (Icons.fiber_new_rounded, cs.primary),
+                        'deadline' => (Icons.event_available_rounded, cs.error),
+                        'download_done' => (
+                            Icons.download_done_rounded,
+                            Colors.green
+                          ),
+                        _ => (Icons.info_outline_rounded, cs.secondary),
+                      };
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: tint.withValues(alpha: 0.14),
+                              child: Icon(icon, size: 18, color: tint),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    n.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    n.body,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

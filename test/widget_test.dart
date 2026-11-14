@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:notas/main.dart';
 import 'package:notas/models/aula_course.dart';
 import 'package:notas/models/categoria_evaluacion.dart';
@@ -938,8 +941,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Aula'), findsOneWidget);
-      expect(find.text('Aula USM'), findsOneWidget);
-      expect(find.text('Conecta tu Aula USM'), findsOneWidget);
+      expect(find.text('Aula-Scrapt USM'), findsOneWidget);
+      expect(find.text('Iniciar sesión en Aula USM'), findsOneWidget);
     });
 
     testWidgets('AulaView onboarding renders cleanly without overflows on wide desktop size',
@@ -958,8 +961,119 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Conecta tu Aula USM'), findsOneWidget);
-      expect(find.text('Sinergia directa con Ramos y Agenda'), findsOneWidget);
+      expect(find.text('Aula-Scrapt USM'), findsOneWidget);
+      expect(
+        find.text('Sincronizador Material 3 para Aula USM & Obsidian'),
+        findsOneWidget,
+      );
+      expect(find.text('Iniciar sesión en Aula USM'), findsOneWidget);
+    });
+
+    test('SettingsService resolves folders and DownloaderService builds Obsidian Markdown graph',
+        () async {
+      final tempDir = await Directory.systemTemp.createTemp('notas_aula_test_');
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+
+      SharedPreferences.setMockInitialValues({});
+      final settings = SettingsService.instance;
+      await settings.load();
+      await settings.setDownloadRoot(tempDir.path);
+
+      // Verify fuzzy / course-code matching against existing Obsidian vault folders
+      final matched = settings.resolveCourseFolderSync(
+        courseId: 777,
+        fullname: '[S2-2026] ESTRUCTURAS DE DATOS - Paralelo 200',
+        cleanName: 'ESTRUCTURAS DE DATOS',
+        shortname: 'INF134-200',
+        existingFolders: ['Cálculo II', 'INF-134 Estructuras', 'Física'],
+      );
+      expect(matched, 'INF-134 Estructuras');
+
+      final moodle = MoodleService();
+      final downloader = DownloaderService(moodle: moodle, settings: settings);
+      final course = MoodleCourse(
+        id: 777,
+        fullname: '[S2-2026] ESTRUCTURAS DE DATOS',
+        shortname: 'INF134-200',
+        url: 'https://aula.usm.cl/course/view.php?id=777',
+        obsidianFolder: 'INF-134 Estructuras',
+        targetSubfolder: 'Aula',
+        organizeBySection: true,
+        items: [
+          MoodleItem(
+            id: '777_1',
+            courseId: 777,
+            title: 'Apuntes Árboles AVL',
+            section: 'Semana 1 / Carpeta Diapos',
+            type: 'resource',
+            url: 'https://aula.usm.cl/pluginfile.php/1/avl.pdf',
+            fileName: 'avl.pdf',
+            fileExt: 'pdf',
+            downloadable: true,
+          ),
+          MoodleItem(
+            id: '777_2',
+            courseId: 777,
+            title: 'Tarea 1 ABB',
+            section: 'Semana 1',
+            type: 'assign',
+            url: 'https://aula.usm.cl/mod/assign/view.php?id=2',
+            dueTimestamp:
+                DateTime(2026, 12, 15, 23, 59).millisecondsSinceEpoch ~/ 1000,
+          ),
+        ],
+      );
+
+      final indexPath = await downloader.syncCourseObsidianIndex(course);
+      expect(await File(indexPath).exists(), isTrue);
+      expect(p.basename(indexPath), '00 - Indice Aula - INF-134 Estructuras.md');
+
+      final indexContent = await File(indexPath).readAsString();
+      expect(indexContent, contains('[[Semana 1/00 - Seccion - Semana 1.md|Semana 1]]'));
+      expect(indexContent, contains('Tarea 1 ABB'));
+
+      final secFile = File(p.join(
+        tempDir.path,
+        'INF-134 Estructuras',
+        'Aula',
+        'Semana 1',
+        '00 - Seccion - Semana 1.md',
+      ));
+      expect(await secFile.exists(), isTrue);
+      final secContent = await secFile.readAsString();
+      expect(secContent, contains('Apuntes Árboles AVL'));
+    });
+
+    test('CloudSyncService tracks Google Drive sync status and expired token renewal flow',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      var status = await CloudSyncService.refreshStatusNotifier();
+      expect(status.state, DriveSyncState.unconfigured);
+
+      await CloudSyncService.setGoogleDriveCredentials(
+        refreshToken: '1//sample-refresh-token',
+      );
+      status = CloudSyncService.driveStatusNotifier.value;
+      expect(status.state, DriveSyncState.synced);
+      expect(status.isExpired, isFalse);
+
+      await CloudSyncService.markDriveTokenExpired('Token expirado HTTP 401');
+      status = CloudSyncService.driveStatusNotifier.value;
+      expect(status.state, DriveSyncState.tokenExpired);
+      expect(status.isExpired, isTrue);
+      expect(status.message, contains('401'));
+
+      // Saving a new refresh token clears the expired error state immediately
+      await CloudSyncService.setGoogleDriveCredentials(
+        refreshToken: '1//renewed-refresh-token',
+      );
+      status = CloudSyncService.driveStatusNotifier.value;
+      expect(status.state, DriveSyncState.synced);
+      expect(status.isExpired, isFalse);
     });
   });
 }

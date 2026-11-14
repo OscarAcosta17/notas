@@ -1,342 +1,487 @@
-import '../models/evaluacion.dart';
-import '../models/ramo.dart';
+import 'evaluacion.dart';
+import 'ramo.dart';
 
-/// Represents a downloadable resource, link, assignment, or activity inside Aula USM.
 class MoodleItem {
-  final String name;
-  final String cleanName;
-  final String type; // file, resource, url, folder, assignment, quiz, forum, page, other
-  final String? url;
-  final String? fileName;
-  final String? mimeType;
-  final int? fileSize;
-  final DateTime? dueDate;
-  final bool completed;
-  final String? description;
-  final String sectionName;
-  final int sectionNumber;
-  final List<MoodleItem> subFiles;
-  final String? courseName;
-  final String? courseShortName;
-
-  String status; // pending, downloading, downloaded, skipped, error
-  double downloadProgress;
+  final String id;
+  final int courseId;
+  final String title;
+  final String section;
+  final String type; // resource, assign, quiz, url, folder, forum, page, label
+  final String url;
+  String fileName;
+  String fileExt;
+  final bool downloadable;
+  int? sizeBytes;
+  bool isDownloaded;
+  bool isNew;
   String? localPath;
+  bool isSelected;
+  int? dueTimestamp; // Unix seconds
+  String? dueText;
 
   MoodleItem({
-    required this.name,
-    String? cleanName,
-    required this.type,
-    this.url,
-    this.fileName,
-    this.mimeType,
-    this.fileSize,
-    this.dueDate,
-    this.completed = false,
-    this.description,
-    this.sectionName = 'General',
-    this.sectionNumber = 0,
-    this.subFiles = const [],
-    this.courseName,
-    this.courseShortName,
-    this.status = 'pending',
-    this.downloadProgress = 0.0,
+    String? id,
+    this.courseId = 0,
+    String? title,
+    String? name,
+    String? section,
+    String? sectionName,
+    this.type = 'resource',
+    this.url = '',
+    this.fileName = '',
+    this.fileExt = '',
+    bool? downloadable,
+    bool? isDownloadable,
+    int? sizeBytes,
+    int? fileSize,
+    this.isDownloaded = false,
+    this.isNew = false,
     this.localPath,
-  }) : cleanName = cleanName ?? cleanDisplayName(name);
+    this.isSelected = false,
+    int? dueTimestamp,
+    DateTime? dueDate,
+    this.dueText,
+  })  : title = title ?? name ?? '',
+        section = section ?? sectionName ?? 'General',
+        downloadable = downloadable ?? isDownloadable ?? false,
+        sizeBytes = sizeBytes ?? fileSize,
+        dueTimestamp = dueTimestamp ??
+            (dueDate != null ? dueDate.millisecondsSinceEpoch ~/ 1000 : null),
+        id = id ??
+            '${courseId}_${(title ?? name ?? '').hashCode}_${url.hashCode}';
 
-  String get key => '$sectionNumber::${url ?? ''}::${fileName ?? name}';
+  // Aliases for NotasApp compatibility
+  String get name => title;
+  String get sectionName => section;
+  bool get isDownloadable => downloadable;
+  int? get fileSize => sizeBytes;
+  DateTime? get dueDate => dueTimestamp != null && dueTimestamp! > 0
+      ? DateTime.fromMillisecondsSinceEpoch(dueTimestamp! * 1000)
+      : null;
 
-  bool get isDownloadable =>
-      ((type == 'file' || type == 'resource' || (type == 'folder' && subFiles.isNotEmpty)) &&
-          ((url != null && url!.isNotEmpty) || subFiles.isNotEmpty));
-
-  bool get isDownloaded => status == 'downloaded' || (localPath != null && localPath!.isNotEmpty);
-
-  bool get isDownloading => status == 'downloading';
-
-  bool get hasDeadline => (type == 'assignment' || type == 'quiz') && dueDate != null;
-
-  bool get isPendingSubmission =>
-      hasDeadline && !completed && dueDate!.isAfter(DateTime.now());
-
-  bool get isOverdue =>
-      hasDeadline && !completed && !dueDate!.isAfter(DateTime.now());
-
-  String get normalizedExtension {
-    final candidate = (fileName ?? url ?? name).split('?').first.split('#').first;
+  String get effectiveExt {
+    if (fileExt.isNotEmpty) return fileExt.toLowerCase();
+    final candidate = fileName.isNotEmpty ? fileName : url.split('?').first;
     final dot = candidate.lastIndexOf('.');
-    if (dot < 0 || dot == candidate.length - 1) return '';
-    return candidate.substring(dot + 1).toLowerCase().trim();
-  }
-
-  String get formattedSize {
-    final bytes = fileSize;
-    if (bytes == null || bytes <= 0) return '';
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (dot != -1 && dot < candidate.length - 1) {
+      final ext = candidate.substring(dot + 1).toLowerCase();
+      if (ext.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(ext)) {
+        return ext;
+      }
     }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+    return '';
   }
 
-  Map<String, dynamic> toIndexJson() => {
-        'name': name,
-        'cleanName': cleanName,
+  bool get hasDeadline =>
+      (dueTimestamp != null && dueTimestamp! > 0) ||
+      (dueText != null && dueText!.trim().isNotEmpty);
+
+  bool get isUrgentDeadline {
+    if (dueTimestamp == null || dueTimestamp! <= 0) return false;
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final diff = dueTimestamp! - nowSec;
+    return diff >= 0 && diff <= 7 * 24 * 3600;
+  }
+
+  bool get isPastDeadline {
+    if (dueTimestamp == null || dueTimestamp! <= 0) return false;
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return dueTimestamp! < nowSec;
+  }
+
+  bool get isAssessableActivity {
+    final t = type.toLowerCase();
+    return t == 'assign' ||
+        t == 'assignment' ||
+        t == 'quiz' ||
+        t == 'workshop' ||
+        t == 'lti' ||
+        hasDeadline;
+  }
+
+  String get formattedSize => formatFileSize(sizeBytes);
+
+  String get formattedDueDate {
+    final dt = dueDate;
+    if (dt != null) {
+      final d = dt.day.toString().padLeft(2, '0');
+      final m = dt.month.toString().padLeft(2, '0');
+      final h = dt.hour.toString().padLeft(2, '0');
+      final min = dt.minute.toString().padLeft(2, '0');
+      return '$d/$m $h:$min';
+    }
+    return dueText ?? '';
+  }
+
+  String get typeLabel {
+    switch (type.toLowerCase()) {
+      case 'resource':
+        return effectiveExt.isNotEmpty ? effectiveExt.toUpperCase() : 'Archivo';
+      case 'folder':
+        return 'Carpeta';
+      case 'assign':
+      case 'assignment':
+        return 'Tarea';
+      case 'quiz':
+        return 'Cuestionario';
+      case 'url':
+        return 'Enlace';
+      case 'forum':
+        return 'Foro';
+      case 'page':
+        return 'Página';
+      case 'book':
+        return 'Libro';
+      case 'lesson':
+        return 'Lección';
+      case 'feedback':
+      case 'questionnaire':
+        return 'Encuesta';
+      case 'choice':
+        return 'Consulta';
+      case 'workshop':
+        return 'Taller';
+      case 'data':
+        return 'Base de datos';
+      case 'glossary':
+        return 'Glosario';
+      case 'wiki':
+        return 'Wiki';
+      case 'scorm':
+        return 'SCORM';
+      case 'lti':
+        return 'Herramienta Externa';
+      case 'h5pactivity':
+        return 'Actividad H5P';
+      case 'zoom':
+      case 'bigbluebuttonbn':
+        return 'Videollamada';
+      default:
+        return type.isNotEmpty ? type : 'Recurso';
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'courseId': courseId,
+        'title': title,
+        'section': section,
         'type': type,
         'url': url,
         'fileName': fileName,
-        'fileSize': fileSize,
-        'dueDate': dueDate?.toIso8601String(),
-        'completed': completed,
-        'sectionName': sectionName,
-        'sectionNumber': sectionNumber,
+        'fileExt': fileExt,
+        'downloadable': downloadable,
+        'sizeBytes': sizeBytes,
+        'isDownloaded': isDownloaded,
+        'isNew': isNew,
         'localPath': localPath,
-        'status': status,
+        'dueTimestamp': dueTimestamp,
+        'dueText': dueText,
       };
 
-  factory MoodleItem.fromIndexJson(Map<String, dynamic> json) {
-    return MoodleItem(
-      name: (json['name'] ?? '').toString(),
-      cleanName: json['cleanName']?.toString(),
-      type: (json['type'] ?? 'file').toString(),
-      url: json['url']?.toString(),
-      fileName: json['fileName']?.toString(),
-      fileSize: (json['fileSize'] as num?)?.toInt(),
-      dueDate: json['dueDate'] != null ? DateTime.tryParse(json['dueDate'].toString()) : null,
-      completed: json['completed'] == true,
-      sectionName: (json['sectionName'] ?? 'General').toString(),
-      sectionNumber: (json['sectionNumber'] as num?)?.toInt() ?? 0,
-      localPath: json['localPath']?.toString(),
-      status: (json['status'] ?? 'pending').toString(),
-    );
+  factory MoodleItem.fromJson(Map<String, dynamic> json) => MoodleItem(
+        id: json['id']?.toString() ?? '',
+        courseId: json['courseId'] is int
+            ? json['courseId'] as int
+            : int.tryParse(json['courseId']?.toString() ?? '0') ?? 0,
+        title: json['title']?.toString() ?? json['name']?.toString() ?? '',
+        section:
+            json['section']?.toString() ?? json['sectionName']?.toString() ?? 'General',
+        type: json['type']?.toString() ?? 'resource',
+        url: json['url']?.toString() ?? '',
+        fileName: json['fileName']?.toString() ?? '',
+        fileExt: json['fileExt']?.toString() ?? '',
+        downloadable: (json['downloadable'] ?? json['isDownloadable']) == true,
+        sizeBytes: json['sizeBytes'] as int? ?? json['fileSize'] as int?,
+        isDownloaded: json['isDownloaded'] == true,
+        isNew: json['isNew'] == true,
+        localPath: json['localPath']?.toString(),
+        dueTimestamp: json['dueTimestamp'] as int?,
+        dueText: json['dueText']?.toString(),
+      );
+
+  static String formatFileSize(int? bytes) {
+    if (bytes == null || bytes <= 0) return '';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  static String cleanDisplayName(String raw) {
-    var text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
-    text = text.replaceFirst(
-      RegExp(r'\s+(Archivo|Carpeta|URL|Tarea|Cuestionario|Foro|Página)$', caseSensitive: false),
-      '',
-    );
-    return text.trim().isEmpty ? raw.trim() : text.trim();
-  }
-
-  static String sanitizeFileName(String raw) {
-    var sanitized = raw
-        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    while (sanitized.endsWith('.') || sanitized.endsWith(' ')) {
-      sanitized = sanitized.substring(0, sanitized.length - 1);
-    }
-    return sanitized.isEmpty ? 'archivo' : sanitized;
-  }
+  static String sanitizeFileName(String raw) => MoodleCourse.sanitizeFileName(raw);
 }
 
-/// Represents an Aula USM Moodle course and provides matching synergy helpers with NotasApp [Ramo].
 class MoodleCourse {
   final int id;
-  final String fullName;
-  final String shortName;
-  final String? summary;
-  final List<MoodleItem> items;
-  final bool isLoaded;
+  final String fullname;
+  final String cleanName;
+  final String shortname;
+  final String url;
+  String obsidianFolder;
+  String targetSubfolder;
+  bool organizeBySection;
+  List<MoodleItem> items;
+  bool isLoadingContents;
+  String? scanError;
   bool isHidden;
-  final bool? isCurrentSemester;
-  final DateTime? startDate;
-  final DateTime? endDate;
+  int? linkedRamoId;
 
   MoodleCourse({
     required this.id,
-    required this.fullName,
-    required this.shortName,
-    this.summary,
-    this.items = const [],
-    this.isLoaded = false,
-    this.isHidden = false,
-    this.isCurrentSemester,
-    this.startDate,
-    this.endDate,
-  });
-
-  String get cleanName {
-    var s = fullName.replaceAll(RegExp(r'\s+'), ' ').trim();
-    // Strip trailing semester suffixes like "- 2026-2", "(2026-1)", "[S2-2026]"
-    s = s.replaceAll(RegExp(r'\s*[-–]\s*20\d{2}[-/]\d+.*$'), '');
-    s = s.replaceAll(RegExp(r'\s*\((?:20\d{2}|[12]S\s*20\d{2}|S[12]\s*20\d{2})[^)]*\)\s*$'), '');
-    // Strip duplicated leading short code like "[INF-253] " or "INF253 - "
-    s = s.replaceFirst(RegExp(r'^\[?[A-Z]{2,5}[-\s]?\d{3}[A-Z]?\]?\s*[-–:]\s*'), '');
-    return s.trim().isEmpty ? fullName.trim() : s.trim();
-  }
-
-  String? get courseCode {
-    final sources = [shortName, fullName];
-    final codeRegex = RegExp(r'\b([A-Z]{2,5}[-\s]?\d{3}[A-Z]?)\b', caseSensitive: false);
-    for (final src in sources) {
-      final m = codeRegex.firstMatch(src);
-      if (m != null) {
-        return m.group(1)!.toUpperCase().replaceAll(RegExp(r'\s+'), '');
-      }
-    }
-    return null;
-  }
-
-  List<MoodleItem> get downloadableItems => items.where((i) => i.isDownloadable).toList();
-  int get downloadableCount => downloadableItems.length;
-  int get downloadedCount => downloadableItems.where((i) => i.isDownloaded).length;
-
-  List<MoodleItem> get upcomingDeadlines =>
-      items.where((i) => i.hasDeadline).toList()
-        ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
-
-  int get deadlineCount => items.where((i) => i.hasDeadline).length;
-  int get pendingDeadlineCount => items.where((i) => i.isPendingSubmission).length;
-
-  MoodleCourse copyWith({
+    String? fullname,
     String? fullName,
+    String? cleanName,
+    String? shortname,
     String? shortName,
-    String? summary,
+    this.url = '',
+    this.obsidianFolder = '',
+    this.targetSubfolder = 'Aula',
+    this.organizeBySection = true,
     List<MoodleItem>? items,
-    bool? isLoaded,
-    bool? isHidden,
-    bool? isCurrentSemester,
-    DateTime? startDate,
-    DateTime? endDate,
-  }) {
-    return MoodleCourse(
-      id: id,
-      fullName: fullName ?? this.fullName,
-      shortName: shortName ?? this.shortName,
-      summary: summary ?? this.summary,
-      items: items ?? this.items,
-      isLoaded: isLoaded ?? this.isLoaded,
-      isHidden: isHidden ?? this.isHidden,
-      isCurrentSemester: isCurrentSemester ?? this.isCurrentSemester,
-      startDate: startDate ?? this.startDate,
-      endDate: endDate ?? this.endDate,
+    this.isLoadingContents = false,
+    this.scanError,
+    this.isHidden = false,
+    this.linkedRamoId,
+  })  : fullname = fullname ?? fullName ?? cleanName ?? 'Curso $id',
+        shortname = shortname ?? shortName ?? '',
+        cleanName = (cleanName != null && cleanName.trim().isNotEmpty)
+            ? cleanName.trim()
+            : cleanCourseName(
+                fullname ?? fullName ?? shortname ?? shortName ?? 'Curso $id'),
+        items = items ?? [];
+
+  // Aliases for NotasApp compatibility
+  String get fullName => fullname;
+  String get shortName => shortname;
+
+  int get deadlinesCount => items.where((i) => i.hasDeadline && !i.isPastDeadline).length;
+  int get urgentDeadlinesCount => items.where((i) => i.isUrgentDeadline).length;
+  int get downloadableCount => items.where((i) => i.downloadable).length;
+  int get newFilesCount =>
+      items.where((i) => i.downloadable && !i.isDownloaded && i.isNew).length;
+  int get pendingCount =>
+      items.where((i) => i.downloadable && !i.isDownloaded).length;
+  int get downloadedCount =>
+      items.where((i) => i.downloadable && i.isDownloaded).length;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'fullname': fullname,
+        'cleanName': cleanName,
+        'shortname': shortname,
+        'url': url,
+        'obsidianFolder': obsidianFolder,
+        'targetSubfolder': targetSubfolder,
+        'organizeBySection': organizeBySection,
+        'isHidden': isHidden,
+        'linkedRamoId': linkedRamoId,
+        'items': items.map((e) => e.toJson()).toList(),
+      };
+
+  factory MoodleCourse.fromJson(Map<String, dynamic> json) => MoodleCourse(
+        id: json['id'] is int
+            ? json['id'] as int
+            : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+        fullname:
+            json['fullname']?.toString() ?? json['fullName']?.toString() ?? '',
+        cleanName: json['cleanName']?.toString() ?? '',
+        shortname:
+            json['shortname']?.toString() ?? json['shortName']?.toString() ?? '',
+        url: json['url']?.toString() ?? '',
+        obsidianFolder: json['obsidianFolder']?.toString() ?? '',
+        targetSubfolder: json['targetSubfolder']?.toString() ?? 'Aula',
+        organizeBySection: json['organizeBySection'] != false,
+        isHidden: json['isHidden'] == true,
+        linkedRamoId: json['linkedRamoId'] as int?,
+        items: (json['items'] as List? ?? [])
+            .map((e) => MoodleItem.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList(),
+      );
+
+  static String cleanCourseName(String raw) {
+    var name = raw.trim();
+    name = name.replaceAll(RegExp(r'^\[[^\]]+\]\s*'), '');
+    name = name.replaceAll(RegExp(r'\s*\[[^\]]+\]$'), '');
+    name = name.replaceAll(RegExp(r'\s*\([S12\-/0-9]+\)\s*$'), '');
+    name = name.replaceAll(
+      RegExp(r'\s*-\s*Paralelo.*$', caseSensitive: false),
+      '',
     );
+    return name.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  static String normalizeAcademicText(String input) {
-    const accents = {
-      'á': 'a',
-      'à': 'a',
-      'ä': 'a',
-      'â': 'a',
-      'é': 'e',
-      'è': 'e',
-      'ë': 'e',
-      'ê': 'e',
-      'í': 'i',
-      'ì': 'i',
-      'ï': 'i',
-      'î': 'i',
-      'ó': 'o',
-      'ò': 'o',
-      'ö': 'o',
-      'ô': 'o',
-      'ú': 'u',
-      'ù': 'u',
-      'ü': 'u',
-      'û': 'u',
-      'ñ': 'n',
-    };
-    final sb = StringBuffer();
-    for (final rune in input.toLowerCase().runes) {
-      final ch = String.fromCharCode(rune);
-      sb.write(accents[ch] ?? ch);
+  static String sanitizeFileName(String raw) {
+    var clean = raw
+        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    clean = clean.replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
+    if (clean.isEmpty) return 'archivo';
+    if (clean.length > 140) {
+      clean = clean.substring(0, 140).trim();
     }
-    var clean = sb.toString();
-    clean = clean.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
-    clean = clean.replaceAll(RegExp(r'\b(20\d{2}|s[12]|[12]s|paralelo|par|grupo|aula)\b'), ' ');
-    return clean.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return clean;
   }
 
-  static String? normalizeCourseCode(String input) {
-    final m = RegExp(r'([A-Za-z]{2,5})[-\s]?(\d{3}[A-Za-z]?)').firstMatch(input);
-    if (m == null) return null;
-    return '${m.group(1)!.toLowerCase()}${m.group(2)!.toLowerCase()}';
+  static String normalizeForMatch(String raw) {
+    var s = raw.toLowerCase().trim();
+    const map = {
+      'á': 'a',
+      'é': 'e',
+      'í': 'i',
+      'ó': 'o',
+      'ú': 'u',
+      'ü': 'u',
+      'ñ': 'n',
+      'à': 'a',
+      'è': 'e',
+      'ì': 'i',
+      'ò': 'o',
+      'ù': 'u',
+    };
+    map.forEach((k, v) => s = s.replaceAll(k, v));
+    s = s.replaceAll(RegExp(r'[^a-z0-9\s]'), ' ');
+    return s.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  /// Finds the best matching [Ramo] from NotasApp's active semester for an Aula course.
+  static String normalizeAcademicText(String raw) => normalizeForMatch(raw);
+
+  static List<String> _extractCourseCodes(String raw) {
+    final matches = RegExp(
+      r'\b([A-Za-z]{2,5})\s*-?\s*(\d{3})\b',
+    ).allMatches(raw);
+    return matches
+        .map((m) => '${m.group(1)!.toUpperCase()}${m.group(2)!}')
+        .toList();
+  }
+
   static Ramo? findMatchingRamo(MoodleCourse course, List<Ramo> ramos) {
     if (ramos.isEmpty) return null;
 
-    final targetNames = {
-      normalizeAcademicText(course.cleanName),
-      normalizeAcademicText(course.fullName),
-      normalizeAcademicText(course.shortName),
-    }..removeWhere((s) => s.isEmpty);
-
-    final targetCode = course.courseCode != null ? normalizeCourseCode(course.courseCode!) : null;
-
-    // 1. Exact normalized name or exact course code match
-    for (final ramo in ramos) {
-      final rNorm = normalizeAcademicText(ramo.nombre);
-      if (rNorm.isNotEmpty && targetNames.contains(rNorm)) {
-        return ramo;
+    if (course.linkedRamoId != null) {
+      for (final r in ramos) {
+        if (r.id == course.linkedRamoId) return r;
       }
-      if (targetCode != null) {
-        final rCode = normalizeCourseCode(ramo.nombre);
-        if (rCode != null && rCode == targetCode) {
-          return ramo;
+    }
+
+    final courseCodes = {
+      ..._extractCourseCodes(course.shortname),
+      ..._extractCourseCodes(course.fullname),
+    };
+    if (courseCodes.isNotEmpty) {
+      for (final r in ramos) {
+        final ramoCodes = _extractCourseCodes(r.nombre);
+        if (ramoCodes.any(courseCodes.contains)) {
+          return r;
         }
       }
     }
 
-    // 2. Containment or token overlap
+    final courseNorm = normalizeAcademicText(course.cleanName);
+    if (courseNorm.isEmpty) return null;
+
     Ramo? best;
-    double bestScore = 0.0;
-    final courseTokens = normalizeAcademicText(course.cleanName)
+    double bestScore = 0;
+
+    final courseTokens = courseNorm
         .split(' ')
-        .where((t) => t.length >= 3)
+        .where((t) => t.length >= 3 && !_stopWords.contains(t))
         .toSet();
 
-    for (final ramo in ramos) {
-      final rNorm = normalizeAcademicText(ramo.nombre);
-      if (rNorm.isEmpty) continue;
-
-      for (final tName in targetNames) {
-        if (tName.length >= 4 && rNorm.length >= 4 && (tName.contains(rNorm) || rNorm.contains(tName))) {
-          return ramo;
-        }
+    for (final r in ramos) {
+      final ramoNorm = normalizeAcademicText(r.nombre);
+      if (ramoNorm.isEmpty) continue;
+      if (ramoNorm == courseNorm ||
+          courseNorm.contains(ramoNorm) ||
+          ramoNorm.contains(courseNorm)) {
+        return r;
       }
-
-      if (courseTokens.isNotEmpty) {
-        final rTokens = rNorm.split(' ').where((t) => t.length >= 3).toSet();
-        if (rTokens.isEmpty) continue;
-        final common = courseTokens.intersection(rTokens).length;
-        final union = courseTokens.union(rTokens).length;
-        final jaccard = union > 0 ? common / union : 0.0;
-        final minCoverage = common / (courseTokens.length < rTokens.length ? courseTokens.length : rTokens.length);
-        final score = jaccard > minCoverage ? jaccard : minCoverage;
-        if (common >= 1 && score >= 0.65 && score > bestScore) {
-          bestScore = score;
-          best = ramo;
-        }
+      final ramoTokens = ramoNorm
+          .split(' ')
+          .where((t) => t.length >= 3 && !_stopWords.contains(t))
+          .toSet();
+      if (courseTokens.isEmpty || ramoTokens.isEmpty) continue;
+      final intersection = courseTokens.intersection(ramoTokens).length;
+      final union = courseTokens.union(ramoTokens).length;
+      final jaccard = union > 0 ? intersection / union : 0.0;
+      if (jaccard > bestScore) {
+        bestScore = jaccard;
+        best = r;
       }
     }
+
+    return bestScore >= 0.45 ? best : null;
+  }
+
+  static Evaluacion? findMatchingEvaluacion(
+    MoodleItem item,
+    List<Evaluacion> evaluaciones,
+  ) {
+    if (evaluaciones.isEmpty) return null;
+    final rawNorm = _stripMoodleActivityNoise(normalizeAcademicText(item.title));
+    if (rawNorm.isEmpty) return null;
+
+    final itemTokens = rawNorm
+        .split(' ')
+        .where((t) => t.isNotEmpty && !_stopWords.contains(t))
+        .toSet();
+
+    Evaluacion? best;
+    double bestScore = 0;
+
+    for (final ev in evaluaciones) {
+      final evNorm = _stripMoodleActivityNoise(normalizeAcademicText(ev.nombre));
+      if (evNorm.isEmpty) continue;
+
+      if (evNorm == rawNorm ||
+          rawNorm.contains(evNorm) ||
+          evNorm.contains(rawNorm)) {
+        return ev;
+      }
+
+      final evTokens = evNorm
+          .split(' ')
+          .where((t) => t.isNotEmpty && !_stopWords.contains(t))
+          .toSet();
+      if (evTokens.isEmpty || itemTokens.isEmpty) continue;
+
+      final common = evTokens.intersection(itemTokens).length;
+      final coverage = common / evTokens.length;
+      if (coverage >= 0.75 && coverage > bestScore) {
+        bestScore = coverage;
+        best = ev;
+      }
+    }
+
     return best;
   }
 
-  /// Checks whether an Aula assignment/quiz was already imported into a [Ramo].
-  static Evaluacion? findMatchingEvaluacion(MoodleItem item, List<Evaluacion> existing) {
-    final itemNorm = normalizeAcademicText(item.cleanName);
-    if (itemNorm.isEmpty) return null;
-
-    for (final ev in existing) {
-      final evNorm = normalizeAcademicText(
-        ev.nombre.replaceFirst(RegExp(r'^Aula:\s*', caseSensitive: false), ''),
-      );
-      if (evNorm == itemNorm ||
-          (itemNorm.length >= 5 && evNorm.contains(itemNorm)) ||
-          (evNorm.length >= 5 && itemNorm.contains(evNorm))) {
-        if (item.dueDate == null || ev.fecha == null) return ev;
-        if (ev.fecha!.difference(item.dueDate!).abs().inHours <= 24) {
-          return ev;
-        }
-      }
-    }
-    return null;
+  static String _stripMoodleActivityNoise(String normalized) {
+    return normalized
+        .replaceAll(
+          RegExp(
+            r'\b(tarea|cuestionario|quiz|entrega|subida|foro|modulo|actividad)\b$',
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
+
+  static const Set<String> _stopWords = {
+    'de',
+    'del',
+    'la',
+    'las',
+    'los',
+    'el',
+    'y',
+    'en',
+    'para',
+    'por',
+    'con',
+    'sin',
+    'sobre',
+    'a',
+    'al',
+  };
 }
