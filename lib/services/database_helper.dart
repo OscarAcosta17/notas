@@ -1,11 +1,24 @@
-import 'package:sqflite/sqflite.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
   static const _databaseVersion = 7; // Incremented for visual/math features
+
+  static bool _ffiInitialized = false;
+  static bool _suppressMutationHook = false;
+  static VoidCallback? onDatabaseMutated;
+
+  static void ensureInitialized() {
+    if (!_ffiInitialized && (Platform.isWindows || Platform.isLinux)) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      _ffiInitialized = true;
+    }
+  }
 
   // Singleton
   DatabaseHelper._privateConstructor();
@@ -20,13 +33,21 @@ class DatabaseHelper {
   }
 
   Future<String> getDatabasePath() async {
+    ensureInitialized();
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final appDir = Directory(join(documentsDirectory.path, 'NotasApp'));
+      if (!await appDir.exists()) {
+        await appDir.create(recursive: true);
+      }
+      return join(appDir.path, _databaseName);
+    }
     return join(documentsDirectory.path, _databaseName);
   }
 
   Future<Database> _initDatabase() async {
-    Directory documentsDirectory = await getApplicationDocumentsDirectory();
-    String path = join(documentsDirectory.path, _databaseName);
+    ensureInitialized();
+    String path = await getDatabasePath();
     return await openDatabase(
       path,
       version: _databaseVersion,
@@ -152,10 +173,18 @@ class DatabaseHelper {
     }
   }
 
+  void _notifyMutated() {
+    if (!_suppressMutationHook) {
+      onDatabaseMutated?.call();
+    }
+  }
+
   // --- CRUD Semesters ---
   Future<int> insertSemester(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.insert('semesters', row);
+    final id = await db.insert('semesters', row);
+    _notifyMutated();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> queryAllSemesters() async {
@@ -165,18 +194,24 @@ class DatabaseHelper {
 
   Future<int> deleteSemester(int id) async {
     Database db = await instance.database;
-    return await db.delete('semesters', where: 'id = ?', whereArgs: [id]);
+    final count = await db.delete('semesters', where: 'id = ?', whereArgs: [id]);
+    _notifyMutated();
+    return count;
   }
 
   Future<int> updateSemester(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.update('semesters', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update('semesters', row, where: 'id = ?', whereArgs: [row['id']]);
+    _notifyMutated();
+    return count;
   }
 
   // --- CRUD Subjects ---
   Future<int> insertSubject(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.insert('subjects', row);
+    final id = await db.insert('subjects', row);
+    _notifyMutated();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> querySubjectsBySemester(int semesterId) async {
@@ -186,18 +221,24 @@ class DatabaseHelper {
 
   Future<int> deleteSubject(int id) async {
     Database db = await instance.database;
-    return await db.delete('subjects', where: 'id = ?', whereArgs: [id]);
+    final count = await db.delete('subjects', where: 'id = ?', whereArgs: [id]);
+    _notifyMutated();
+    return count;
   }
 
   Future<int> updateSubject(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.update('subjects', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update('subjects', row, where: 'id = ?', whereArgs: [row['id']]);
+    _notifyMutated();
+    return count;
   }
 
   // --- CRUD Categories ---
   Future<int> insertCategory(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.insert('categories', row);
+    final id = await db.insert('categories', row);
+    _notifyMutated();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> queryCategoriesBySubject(int subjectId) async {
@@ -207,39 +248,51 @@ class DatabaseHelper {
 
   Future<int> deleteCategory(int id) async {
     Database db = await instance.database;
-    return await db.delete('categories', where: 'id = ?', whereArgs: [id]);
+    final count = await db.delete('categories', where: 'id = ?', whereArgs: [id]);
+    _notifyMutated();
+    return count;
   }
 
   Future<int> updateCategory(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.update('categories', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update('categories', row, where: 'id = ?', whereArgs: [row['id']]);
+    _notifyMutated();
+    return count;
   }
 
   // --- CRUD Evaluations ---
   Future<int> insertEvaluation(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.insert('evaluations', row);
+    final id = await db.insert('evaluations', row);
+    _notifyMutated();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> queryEvaluationsByCategory(int categoryId) async {
     Database db = await instance.database;
     return await db.query('evaluations', where: 'category_id = ?', whereArgs: [categoryId]);
   }
-  
+
   Future<int> deleteEvaluation(int id) async {
     Database db = await instance.database;
-    return await db.delete('evaluations', where: 'id = ?', whereArgs: [id]);
+    final count = await db.delete('evaluations', where: 'id = ?', whereArgs: [id]);
+    _notifyMutated();
+    return count;
   }
 
   Future<int> updateEvaluation(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.update('evaluations', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update('evaluations', row, where: 'id = ?', whereArgs: [row['id']]);
+    _notifyMutated();
+    return count;
   }
 
   // --- CRUD Horarios ---
   Future<int> insertHorario(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.insert('horario_clases', row);
+    final id = await db.insert('horario_clases', row);
+    _notifyMutated();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> queryHorariosBySemester(int semesterId) async {
@@ -249,15 +302,67 @@ class DatabaseHelper {
 
   Future<int> deleteHorario(int id) async {
     Database db = await instance.database;
-    return await db.delete('horario_clases', where: 'id = ?', whereArgs: [id]);
+    final count = await db.delete('horario_clases', where: 'id = ?', whereArgs: [id]);
+    _notifyMutated();
+    return count;
   }
 
   Future<int> updateHorario(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    return await db.update('horario_clases', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update('horario_clases', row, where: 'id = ?', whereArgs: [row['id']]);
+    _notifyMutated();
+    return count;
   }
 
-  // --- Backup and Restore ---
+  // --- Backup, Snapshot Sync and Restore ---
+  Future<Map<String, dynamic>> exportFullSnapshot() async {
+    final db = await database;
+    final semesters = await db.query('semesters', orderBy: 'id ASC');
+    final subjects = await db.query('subjects', orderBy: 'id ASC');
+    final categories = await db.query('categories', orderBy: 'id ASC');
+    final evaluations = await db.query('evaluations', orderBy: 'id ASC');
+    final horarioClases = await db.query('horario_clases', orderBy: 'id ASC');
+
+    return {
+      'schemaVersion': _databaseVersion,
+      'semesters': semesters,
+      'subjects': subjects,
+      'categories': categories,
+      'evaluations': evaluations,
+      'horario_clases': horarioClases,
+    };
+  }
+
+  Future<void> restoreFullSnapshot(Map<String, dynamic> data) async {
+    final db = await database;
+    _suppressMutationHook = true;
+    try {
+      await db.transaction((txn) async {
+        await txn.delete('horario_clases');
+        await txn.delete('evaluations');
+        await txn.delete('categories');
+        await txn.delete('subjects');
+        await txn.delete('semesters');
+
+        Future<void> insertRows(String table, dynamic rawRows) async {
+          if (rawRows is! List) return;
+          for (final row in rawRows) {
+            if (row is Map) {
+              await txn.insert(table, Map<String, dynamic>.from(row));
+            }
+          }
+        }
+
+        await insertRows('semesters', data['semesters']);
+        await insertRows('subjects', data['subjects']);
+        await insertRows('categories', data['categories']);
+        await insertRows('evaluations', data['evaluations']);
+        await insertRows('horario_clases', data['horario_clases']);
+      });
+    } finally {
+      _suppressMutationHook = false;
+    }
+  }
   Future<String> exportDatabase() async {
     final dbPath = await getDatabasePath();
     final dbFile = File(dbPath);

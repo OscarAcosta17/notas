@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/cloud_sync_service.dart';
 
 class SettingsState {
   final bool isDarkMode;
@@ -184,16 +185,26 @@ class SettingsNotifier extends Notifier<SettingsState> {
     );
   }
 
+  Future<void> reloadSettings() => _loadSettings();
+
+  void _triggerAutoSyncIfHooked() {
+    if (CloudSyncService.isAutoSyncHookAttached) {
+      CloudSyncService.scheduleAutoSync();
+    }
+  }
+
   Future<void> _setBoolPref(String key, bool value, SettingsState nextState) async {
     state = nextState;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
+    _triggerAutoSyncIfHooked();
   }
 
   Future<void> _setStringPref(String key, String value, SettingsState nextState) async {
     state = nextState;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, value);
+    _triggerAutoSyncIfHooked();
   }
 
   Future<void> toggleDarkMode() async {
@@ -261,28 +272,20 @@ class SettingsNotifier extends Notifier<SettingsState> {
     state = state.copyWith(selectedEvalSound: soundName);
   }
 
-  Future<void> setNotificationsEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_notifEnabledKey, enabled);
-    state = state.copyWith(notificationsEnabled: enabled);
-  }
+  Future<void> setNotificationsEnabled(bool enabled) async =>
+      _setBoolPref(_notifEnabledKey, enabled, state.copyWith(notificationsEnabled: enabled));
 
-  Future<void> setSubjectViewMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_viewModeKey, mode);
-    state = state.copyWith(subjectViewMode: mode);
-  }
+  Future<void> setSubjectViewMode(String mode) async =>
+      _setStringPref(_viewModeKey, mode, state.copyWith(subjectViewMode: mode));
 
-  Future<void> setIsCompactList(bool isCompact) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_isCompactListKey, isCompact);
-    state = state.copyWith(isCompactList: isCompact);
-  }
+  Future<void> setIsCompactList(bool isCompact) async =>
+      _setBoolPref(_isCompactListKey, isCompact, state.copyWith(isCompactList: isCompact));
 
   Future<void> setGridCrossAxisCount(int count) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_gridCrossAxisKey, count);
     state = state.copyWith(gridCrossAxisCount: count);
+    _triggerAutoSyncIfHooked();
   }
 
   Future<void> setTertiaryColor(int? color) async {
@@ -294,6 +297,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
       await prefs.setInt(_tertiaryColorKey, color);
       state = state.copyWith(tertiaryColor: color);
     }
+    _triggerAutoSyncIfHooked();
   }
 }
 

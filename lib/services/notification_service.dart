@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -10,6 +11,7 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
+    if (!Platform.isAndroid) return;
     tz.initializeTimeZones();
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/launcher_icon');
     const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
@@ -17,16 +19,19 @@ class NotificationService {
   }
 
   static Future<bool> requestPermissions() async {
+    if (!Platform.isAndroid) return true;
     final statusNotif = await Permission.notification.request();
     final statusAlarm = await Permission.scheduleExactAlarm.request();
     return statusNotif.isGranted && (statusAlarm.isGranted || statusAlarm.isRestricted); // Restricted might mean it's not applicable or already allowed by default on older OS
   }
 
   static Future<void> cancelAll() async {
+    if (!Platform.isAndroid) return;
     await _notificationsPlugin.cancelAll();
   }
 
   static Future<void> showInstantNotification(String title, String body) async {
+    if (!Platform.isAndroid) return;
     const androidDetails = AndroidNotificationDetails(
       'update_channel',
       'Actualizaciones',
@@ -46,6 +51,7 @@ class NotificationService {
   }
 
   static Future<void> showTestSoundNotification(String title, String body, String soundName) async {
+    if (!Platform.isAndroid) return;
     final channelId = 'test_channel_$soundName';
     final androidDetails = AndroidNotificationDetails(
       channelId,
@@ -66,6 +72,7 @@ class NotificationService {
   }
 
   static Future<void> showInstantClassNotification(ClaseHorario clase) async {
+    if (!Platform.isAndroid) return;
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('notificationsEnabled') ?? true;
     if (!enabled) return;
@@ -91,6 +98,7 @@ class NotificationService {
   }
 
   static Future<void> showInstantEvalNotification(Evaluacion ev, String ramoNombre) async {
+    if (!Platform.isAndroid) return;
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('notificationsEnabled') ?? true;
     if (!enabled) return;
@@ -116,7 +124,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleEvaluationReminder(Evaluacion ev, String ramoNombre) async {
-    if (ev.fecha == null || ev.id == null) return;
+    if (!Platform.isAndroid || ev.fecha == null || ev.id == null) return;
     
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('notificationsEnabled') ?? true;
@@ -142,6 +150,7 @@ class NotificationService {
   }
 
   static Future<void> cancelEvaluationReminder(int evalId) async {
+    if (!Platform.isAndroid) return;
     await _notificationsPlugin.cancel(id: (evalId * 100) + 1);
     await _notificationsPlugin.cancel(id: (evalId * 100) + 2);
   }
@@ -174,7 +183,7 @@ class NotificationService {
   }
 
   static Future<void> scheduleClassReminder(ClaseHorario clase) async {
-    if (clase.id == null) return;
+    if (!Platform.isAndroid || clase.id == null) return;
 
     final prefs = await SharedPreferences.getInstance();
     final enabled = prefs.getBool('notificationsEnabled') ?? true;
@@ -250,6 +259,7 @@ class NotificationService {
   }
   
   static Future<void> cancelClassReminder(int claseId) async {
+    if (!Platform.isAndroid) return;
     await _notificationsPlugin.cancel(id: (claseId * 1000) + 3);
   }
 }

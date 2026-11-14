@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:home_widget/home_widget.dart';
 import '../models/evaluacion.dart';
 import '../models/clase_horario.dart';
@@ -5,6 +6,7 @@ import '../services/database_helper.dart';
 
 class WidgetService {
   static Future<void> updateAgendaWidget() async {
+    if (!Platform.isAndroid) return;
     final db = DatabaseHelper.instance;
     List<Map<String, dynamic>> upcoming = [];
     
@@ -59,6 +61,7 @@ class WidgetService {
   }
 
   static Future<void> updateHorarioWidget() async {
+    if (!Platform.isAndroid) return;
     final db = DatabaseHelper.instance;
     try {
       // Find current semester

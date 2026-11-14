@@ -1,4 +1,4 @@
-name: Build and Release APK
+name: Build and Release APK & Windows
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build APK & Publish GitHub Release
+  build-android:
+    name: Build Android APK & Run Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -47,8 +47,59 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Prepare release asset
+      - name: Prepare Android release asset
         run: cp build/app/outputs/flutter-apk/app-release.apk "NotasApp-${{ github.ref_name }}.apk"
+
+      - name: Upload Android APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: NotasApp-${{ github.ref_name }}.apk
+
+  build-windows:
+    name: Build Windows Desktop ZIP
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows release ZIP
+        shell: pwsh
+        run: Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "NotasApp-Windows-$($env:GITHUB_REF_NAME).zip" -Force
+
+      - name: Upload Windows ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: NotasApp-Windows-${{ github.ref_name }}.zip
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
 
       - name: Extract release notes from README.md
         id: notes
@@ -93,6 +144,8 @@ jobs:
         with:
           name: ${{ steps.notes.outputs.title }}
           body_path: release_notes.md
-          files: NotasApp-${{ github.ref_name }}.apk
+          files: |
+            NotasApp-${{ github.ref_name }}.apk
+            NotasApp-Windows-${{ github.ref_name }}.zip
           draft: false
           prerelease: false

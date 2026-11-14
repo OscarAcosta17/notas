@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/updater_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
+import 'bug_report_sheet.dart';
 
 class AppInfoView extends StatefulWidget {
   const AppInfoView({super.key});
@@ -33,13 +34,15 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.2.2)'),
+        title: const Text('Novedades (v1.2.3)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• 🧭 5 Diseños de Barra de Navegación: Elige entre Google M3 Expressive (cápsula compacta con expansión horizontal), One UI 7, Cápsula Cristal, Flotante + FAB y Dock clásico, todos con vista previa en vivo.\n'
-            '• 🎨 Nuevos Estilos de Color en Ramos: Añadidos Degradado Izquierda ➔ Derecha (que se desvanece suavemente hacia la derecha), Resplandor Lateral, Neón / Doble Acento y Banda Superior.\n'
-            '• 🖼️ Selector de Icono de la App Funcional y con Vista Previa: Previsualiza el icono Clásico y Minimalista lado a lado y cámbialo al instante en Android mediante canal nativo directo.\n'
-            '• ↔️ Mantiene todo lo introducido en v1.2.1: PageView continuo entre Ramos, Horario y Agenda, selector de semestre en cabecera, color destacado terciario global, modo OLED puro y actualizador pausable.',
+            '• 💻 App de Escritorio Nativa para Windows: Ejecuta NotasApp directamente en tu PC con base de datos SQLite local independiente, soporte táctil/mouse completo y actualizaciones automáticas multiplataforma.\n'
+            '• ☁️ Sincronización Multiplataforma (Estilo Obsidian): Sincroniza tus semestres, ramos, horario, evaluaciones y ajustes visuales entre Android y Windows sin configurar cuentas complejas.\n'
+            '• 🔐 Nube Privada en 1 Clic (GitHub Gist Secreto): Vincula un token personal (scope gist) para subir o bajar tu copia completa cifrada en tránsito entre todos tus dispositivos.\n'
+            '• 📁 Carpeta Sincronizada y Paquete Portable (.json): Elige una carpeta de Google Drive / OneDrive en Windows o exporta un paquete completo notas_sync_bundle.json para compartir entre dispositivos.\n'
+            '• 🐛 Sistema de Reporte de Fallos y Tickets en GitHub: Captura automática de errores en segundo plano y formulario integrado para levantar Issues en GitHub con ficha técnica de Android o Windows.\n'
+            '• 🧭 Mantiene todo lo de v1.2.2: 5 diseños de barra de navegación, degradados en ramos, selector visual de icono en Android y modo OLED puro.',
           ),
         ),
         actions: [
@@ -143,6 +146,13 @@ class _AppInfoViewState extends State<AppInfoView> {
                 title: const Text('Novedades', style: TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: const Text('Descubre qué ha cambiado en esta versión'),
                 onTap: _showNovedades,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.bug_report_rounded),
+                title: const Text('Reportar un Fallo o Sugerencia', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Levanta un ticket en GitHub con diagnóstico automático'),
+                onTap: () => showBugReportSheet(context),
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

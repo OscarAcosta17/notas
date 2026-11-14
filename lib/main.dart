@@ -1,16 +1,39 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'services/bug_report_service.dart';
+import 'services/cloud_sync_service.dart';
+import 'services/database_helper.dart';
 import 'services/notification_service.dart';
 import 'services/widget_service.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/settings_provider.dart';
 import 'views/home_view.dart';
 
+class _DesktopTouchScrollBehavior extends MaterialScrollBehavior {
+  const _DesktopTouchScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => const {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.unknown,
+      };
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  BugReportService.initErrorHooks();
+  DatabaseHelper.ensureInitialized();
+  CloudSyncService.initAutoSyncHook();
+  if (Platform.isAndroid || Platform.isIOS) {
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
   await NotificationService.initialize();
   WidgetService.updateAgendaWidget();
   WidgetService.updateHorarioWidget();
@@ -41,8 +64,9 @@ class NotasApp extends ConsumerWidget {
         }
 
         return MaterialApp(
-          title: 'Gestión Universitaria',
+          title: 'NotasApp - Gestión Universitaria',
           debugShowCheckedModeBanner: false,
+          scrollBehavior: const _DesktopTouchScrollBehavior(),
           themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           theme: themeFor(Brightness.light, lightDynamic),
           darkTheme: themeFor(Brightness.dark, darkDynamic),

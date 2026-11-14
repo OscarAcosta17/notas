@@ -6,16 +6,20 @@ import 'package:notas/models/categoria_evaluacion.dart';
 import 'package:notas/models/evaluacion.dart';
 import 'package:notas/models/ramo.dart';
 import 'package:notas/models/semestre.dart';
+import 'package:notas/services/bug_report_service.dart';
+import 'package:notas/services/cloud_sync_service.dart';
 import 'package:notas/services/updater_service.dart';
 import 'package:notas/theme/app_theme.dart';
 import 'package:notas/viewmodels/categoria_provider.dart';
 import 'package:notas/viewmodels/ramo_provider.dart';
 import 'package:notas/viewmodels/semestre_provider.dart';
 import 'package:notas/viewmodels/settings_provider.dart';
+import 'package:notas/views/bug_report_sheet.dart';
 import 'package:notas/views/formula_editor_dialog.dart';
 import 'package:notas/views/ramo_detail_view.dart';
 import 'package:notas/views/semestre_detail_view.dart';
 import 'package:notas/views/settings/appearance_settings_view.dart';
+import 'package:notas/views/settings/data_settings_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeSemestreNotifier extends SemestreNotifier {
@@ -589,6 +593,165 @@ void main() {
       await tester.tap(find.text('Guardar'));
       await tester.pumpAndSettle();
       expect(saved, 'e1+e2');
+    });
+
+    test('CloudSyncService builds and applies portable sync bundles without data loss', () async {
+      SharedPreferences.setMockInitialValues({
+        'isDarkMode': true,
+        'bottomNavStyle': 'one_ui',
+        'escalaNotas': '1 a 7',
+        'tertiaryColor': 0xFF6750A4,
+      });
+
+      final mockDb = <String, dynamic>{
+        'semesters': [
+          {'id': 1, 'name': '2026-2'},
+        ],
+        'subjects': [
+          {
+            'id': 10,
+            'semester_id': 1,
+            'name': 'Cálculo II',
+            'average_type': 'Aritmetico',
+            'has_global_exam': 0,
+            'global_exam_replaces_worst': 0,
+            'min_passing_grade': 4.0,
+            'order_index': 0,
+            'color': 0xFF1E88E5,
+          },
+        ],
+        'categories': <Map<String, dynamic>>[],
+        'evaluations': <Map<String, dynamic>>[],
+        'horario_clases': <Map<String, dynamic>>[],
+      };
+
+      final bundle = await CloudSyncService.buildSyncBundle(
+        databaseOverride: mockDb,
+      );
+
+      expect(bundle['app'], 'NotasApp');
+      expect(bundle['formatVersion'], CloudSyncService.bundleFormatVersion);
+      expect((bundle['database'] as Map)['semesters'], hasLength(1));
+      expect((bundle['settings'] as Map)['bottomNavStyle'], 'one_ui');
+
+      // Mutate local settings and verify restore re-applies bundle settings
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isDarkMode', false);
+      await prefs.setString('bottomNavStyle', 'dock');
+      await prefs.remove('tertiaryColor');
+
+      await CloudSyncService.applySyncBundle(bundle, restoreDatabase: false);
+
+      expect(prefs.getBool('isDarkMode'), isTrue);
+      expect(prefs.getString('bottomNavStyle'), 'one_ui');
+      expect(prefs.getString('escalaNotas'), '1 a 7');
+      expect(prefs.getInt('tertiaryColor'), 0xFF6750A4);
+    });
+
+    testWidgets('DataSettingsView renders multiplatform sync and backup sections',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: DataSettingsView(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sincronización Multiplataforma (Android y PC)'), findsOneWidget);
+      expect(find.text('Nube Privada (GitHub Gist)'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Subir a la Nube'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Subir a la Nube'), findsOneWidget);
+      expect(find.text('Descargar de la Nube'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Carpeta Sincronizada (Drive / OneDrive)'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Carpeta Sincronizada (Drive / OneDrive)'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Importar Datos (.json o .db)'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Exportar Paquete Completo (.json)'), findsOneWidget);
+      expect(find.text('Exportar Base SQLite (.db)'), findsOneWidget);
+      expect(find.text('Importar Datos (.json o .db)'), findsOneWidget);
+    });
+
+    test('BugReportService records error logs and builds GitHub issue Markdown and URI',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      await BugReportService.clearErrorLogs();
+
+      await BugReportService.recordError(
+        'Database locked',
+        'at DatabaseHelper.init (database_helper.dart:42)',
+        source: 'UnitTest',
+      );
+
+      final logs = await BugReportService.getErrorLogs();
+      expect(logs, hasLength(1));
+      expect(logs.first.error, 'Database locked');
+      expect(logs.first.source, 'UnitTest');
+
+      final report = await BugReportService.buildDiagnosticReport(
+        title: 'Fallo al guardar',
+        description: 'No guarda el ramo',
+        stepsToReproduce: '1. Abrir app',
+        category: 'bug',
+        appVersionOverride: 'v1.2.3+24',
+      );
+
+      expect(report, contains('Fallo al guardar'));
+      expect(report, contains('v1.2.3+24'));
+      expect(report, contains('Database locked'));
+
+      final uri = BugReportService.buildGitHubIssueUri(
+        title: 'Fallo al guardar',
+        markdownBody: report,
+        category: 'bug',
+      );
+
+      expect(uri.host, 'github.com');
+      expect(uri.path, '/OscarAcosta17/notas/issues/new');
+      expect(uri.queryParameters['title'], '[BUG] Fallo al guardar');
+      expect(uri.queryParameters['labels'], 'bug');
+
+      await BugReportService.clearErrorLogs();
+    });
+
+    testWidgets('BugReportSheet renders form fields, category chips, and GitHub ticket actions',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await BugReportService.clearErrorLogs();
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: BugReportSheet(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Reportar Fallo o Sugerencia'), findsOneWidget);
+      expect(find.text('Fallo / Bug'), findsOneWidget);
+      expect(find.text('Sugerencia'), findsOneWidget);
+      expect(find.text('Visual / UI'), findsOneWidget);
+      expect(find.text('Levantar Ticket en GitHub'), findsOneWidget);
+      expect(find.text('Enviar con Token API'), findsOneWidget);
+      expect(find.text('Copiar Diagnóstico'), findsOneWidget);
     });
   });
 }

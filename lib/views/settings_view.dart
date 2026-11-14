@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
 import 'app_info_view.dart';
+import 'bug_report_sheet.dart';
 import 'settings/appearance_settings_view.dart';
 import 'settings/data_settings_view.dart';
 import 'settings/notifications_settings_view.dart';
@@ -58,7 +59,7 @@ class SettingsView extends ConsumerWidget {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 leading: const TonalIconBadge(icon: Icons.storage_rounded),
                 title: const Text('Datos y Almacenamiento', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Copias de seguridad, caché y escala de notas'),
+                subtitle: const Text('Sincronización cloud, copias de seguridad y caché'),
                 trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
                 onTap: () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const DataSettingsView()));
@@ -78,6 +79,14 @@ class SettingsView extends ConsumerWidget {
                 onTap: () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const AppInfoView()));
                 },
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: const TonalIconBadge(icon: Icons.bug_report_rounded),
+                title: const Text('Reportar un Fallo o Sugerencia', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Crea un ticket en GitHub Issues o copia el diagnóstico'),
+                trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+                onTap: () => showBugReportSheet(context),
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

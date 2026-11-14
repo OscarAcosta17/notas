@@ -1,11 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../services/cloud_sync_service.dart';
 import '../../services/database_helper.dart';
+import '../../theme/app_theme.dart';
 import '../../theme/expressive_widgets.dart';
+import '../../viewmodels/categoria_provider.dart';
+import '../../viewmodels/ramo_provider.dart';
+import '../../viewmodels/semestre_provider.dart';
 import '../../viewmodels/settings_provider.dart';
 
 class DataSettingsView extends ConsumerStatefulWidget {
@@ -17,11 +25,44 @@ class DataSettingsView extends ConsumerStatefulWidget {
 
 class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
   String _cacheSizeStr = 'Calculando...';
+  CloudSyncConfig _syncConfig = const CloudSyncConfig();
+  bool _isSyncBusy = false;
 
   @override
   void initState() {
     super.initState();
     _calculateCacheSize();
+    _loadSyncConfig();
+  }
+
+  Future<void> _loadSyncConfig() async {
+    try {
+      final cfg = await CloudSyncService.getConfig();
+      if (mounted) {
+        setState(() => _syncConfig = cfg);
+      }
+    } catch (_) {
+      // Ignore in mocked/headless tests
+    }
+  }
+
+  Future<void> _refreshAppStateAfterRestore() async {
+    await ref.read(settingsProvider.notifier).reloadSettings();
+    ref.invalidate(semestreProvider);
+    ref.invalidate(ramoProvider);
+    ref.invalidate(categoriaProvider);
+    await _loadSyncConfig();
+  }
+
+  String _formatLastSync(String? iso) {
+    if (iso == null || iso.isEmpty) return 'Aún no sincronizado';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return 'Sincronizado';
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return 'Última sinc: $d/$m $hh:$mm';
   }
 
   Future<void> _calculateCacheSize() async {
@@ -79,9 +120,272 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
     }
   }
 
+  Future<void> _pickSyncFolder() async {
+    try {
+      final selected = await FilePicker.getDirectoryPath(
+        dialogTitle: 'Selecciona carpeta sincronizada (Drive / OneDrive / Local)',
+      );
+      if (selected == null || selected.trim().isEmpty) return;
+      if (selected.trim() == '/') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Android restringió esa ruta raíz. Elige una carpeta dentro de Documentos/Descargas o usa el paquete JSON con Drive.'),
+            ),
+          );
+        }
+        return;
+      }
+      await CloudSyncService.setFolderPath(selected);
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Carpeta vinculada: $selected')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al seleccionar carpeta: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _syncToFolderNow() async {
+    if (_isSyncBusy) return;
+    setState(() => _isSyncBusy = true);
+    try {
+      final file = await CloudSyncService.syncToFolder();
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Guardado en carpeta: ${p.basename(file.path)}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar en carpeta: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _restoreFromFolderNow() async {
+    if (_isSyncBusy) return;
+    setState(() => _isSyncBusy = true);
+    try {
+      await CloudSyncService.restoreFromFolder();
+      await _refreshAppStateAfterRestore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Datos y apariencia restaurados desde carpeta sincronizada.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar desde carpeta: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _openGithubSyncSetupDialog() async {
+    final tokenController = TextEditingController(text: _syncConfig.githubToken ?? '');
+    final gistIdController = TextEditingController(text: _syncConfig.gistId ?? '');
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sincronizar con GitHub Gist'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Guarda tus notas y configuración en un Gist secreto privado de tu cuenta de GitHub (estilo Obsidian Git, sin OAuth de Google).',
+                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '1. En GitHub ➔ Settings ➔ Developer settings ➔ Tokens (classic), genera un token solo con el permiso "gist".\n'
+                '2. Pégalo aquí abajo. La app detectará o creará tu Gist privado automáticamente.',
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: tokenController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Token Personal de GitHub (scope: gist)',
+                  hintText: 'ghp_... o github_pat_...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: gistIdController,
+                decoration: const InputDecoration(
+                  labelText: 'ID del Gist (opcional, se auto-detecta)',
+                  hintText: 'Déjalo vacío para buscar o crear uno',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          if (_syncConfig.hasGistAuth)
+            TextButton(
+              onPressed: () async {
+                await CloudSyncService.setGithubCredentials(token: null, gistId: '');
+                if (context.mounted) Navigator.pop(context, false);
+              },
+              child: const Text('Desconectar'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await CloudSyncService.setGithubCredentials(
+                token: tokenController.text.trim(),
+                gistId: gistIdController.text.trim(),
+              );
+              if (context.mounted) Navigator.pop(context, true);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    tokenController.dispose();
+    gistIdController.dispose();
+
+    await _loadSyncConfig();
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Credenciales de GitHub Gist guardadas.')),
+      );
+    }
+  }
+
+  Future<void> _pushGistNow() async {
+    if (_isSyncBusy) return;
+    if (!_syncConfig.hasGistAuth) {
+      await _openGithubSyncSetupDialog();
+      return;
+    }
+    setState(() => _isSyncBusy = true);
+    try {
+      final id = await CloudSyncService.uploadToGist();
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Subido a GitHub Gist privado (${id.substring(0, id.length > 8 ? 8 : id.length)}...).')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al subir a la nube: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _pullGistNow() async {
+    if (_isSyncBusy) return;
+    if (!_syncConfig.hasGistAuth) {
+      await _openGithubSyncSetupDialog();
+      return;
+    }
+    setState(() => _isSyncBusy = true);
+    try {
+      await CloudSyncService.downloadFromGist();
+      await _refreshAppStateAfterRestore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Datos y ajustes sincronizados desde la nube.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al descargar de la nube: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _exportPortableBundle() async {
+    try {
+      final bundle = await CloudSyncService.buildSyncBundle();
+      const encoder = JsonEncoder.withIndent('  ');
+      final jsonStr = encoder.convert(bundle);
+      final bytes = Uint8List.fromList(utf8.encode(jsonStr));
+
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        final target = await FilePicker.saveFile(
+          dialogTitle: 'Guardar Paquete de Sincronización',
+          fileName: CloudSyncService.bundleFileName,
+          bytes: bytes,
+        );
+        if (target != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Paquete guardado en $target')),
+          );
+        }
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final tempFile = File(p.join(dir.path, CloudSyncService.bundleFileName));
+      await tempFile.writeAsBytes(bytes);
+      await Share.shareXFiles(
+        [XFile(tempFile.path)],
+        text: 'Paquete completo NotasApp (datos + ajustes)',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar paquete JSON: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _exportBackup() async {
     try {
       final path = await DatabaseHelper.instance.exportDatabase();
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        final bytes = await File(path).readAsBytes();
+        final savedPath = await FilePicker.saveFile(
+          dialogTitle: 'Guardar Copia SQLite (.db)',
+          fileName: 'NotasDB_backup.db',
+          bytes: bytes,
+        );
+        if (savedPath != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Copia guardada en $savedPath')),
+          );
+        }
+        return;
+      }
+
       await Share.shareXFiles([XFile(path)], text: 'Copia de Seguridad de NotasApp');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -103,10 +407,17 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
       if (result != null) {
         String? filePath = result.files.single.path;
         if (filePath != null) {
-          await DatabaseHelper.instance.importDatabase(filePath);
+          if (filePath.toLowerCase().endsWith('.json')) {
+            final raw = await File(filePath).readAsString(encoding: utf8);
+            final decoded = jsonDecode(raw) as Map<String, dynamic>;
+            await CloudSyncService.applySyncBundle(decoded);
+          } else {
+            await DatabaseHelper.instance.importDatabase(filePath);
+          }
+          await _refreshAppStateAfterRestore();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Copia de seguridad restaurada. Por favor reinicia la app.')),
+              const SnackBar(content: Text('Copia restaurada y aplicada en vivo.')),
             );
           }
         }
@@ -123,6 +434,7 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final tokens = context.visualTokens;
     final scheme = Theme.of(context).colorScheme;
     final topInset = MediaQuery.paddingOf(context).top + kToolbarHeight;
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
@@ -136,6 +448,152 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
       body: ListView(
         padding: EdgeInsets.fromLTRB(0, topInset + 8, 0, 28 + bottomInset),
         children: [
+          const ExpressiveSectionHeader(title: 'Sincronización Multiplataforma (Android y PC)'),
+          ExpressiveGroupedSection(
+            children: [
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                secondary: TonalIconBadge(icon: Icons.sync_rounded, color: tokens.accentColor),
+                title: const Text('Sincronización automática', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(_formatLastSync(_syncConfig.lastSyncIso)),
+                value: _syncConfig.autoSyncEnabled,
+                onChanged: (val) async {
+                  await CloudSyncService.setAutoSyncEnabled(val);
+                  await _loadSyncConfig();
+                  if (val) {
+                    CloudSyncService.scheduleAutoSync();
+                  }
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        TonalIconBadge(icon: Icons.cloud_queue_rounded, color: tokens.accentColor),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Nube Privada (GitHub Gist)',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                              ),
+                              Text(
+                                _syncConfig.hasGistAuth
+                                    ? (_syncConfig.gistId != null && _syncConfig.gistId!.isNotEmpty
+                                        ? 'Conectado (Gist ${_syncConfig.gistId!.substring(0, _syncConfig.gistId!.length > 8 ? 8 : _syncConfig.gistId!.length)}...)'
+                                        : 'Token listo (creará Gist al subir)')
+                                    : 'Estilo Obsidian: sin configuración de Google Cloud',
+                                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings_rounded),
+                          tooltip: 'Configurar Token GitHub',
+                          onPressed: _openGithubSyncSetupDialog,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonalIcon(
+                          onPressed: _isSyncBusy ? null : _pushGistNow,
+                          icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                          label: const Text('Subir a la Nube'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _isSyncBusy ? null : _pullGistNow,
+                          icon: const Icon(Icons.cloud_download_rounded, size: 18),
+                          label: const Text('Descargar de la Nube'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        TonalIconBadge(icon: Icons.folder_shared_rounded, color: tokens.accentColor),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Carpeta Sincronizada (Drive / OneDrive)',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                              ),
+                              Text(
+                                _syncConfig.hasFolder
+                                    ? _syncConfig.folderPath!
+                                    : 'Vincula una carpeta de Google Drive o OneDrive en tu PC',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_syncConfig.hasFolder)
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            tooltip: 'Desvincular carpeta',
+                            onPressed: () async {
+                              await CloudSyncService.setFolderPath(null);
+                              await _loadSyncConfig();
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _isSyncBusy ? null : _pickSyncFolder,
+                          icon: const Icon(Icons.folder_open_rounded, size: 18),
+                          label: Text(_syncConfig.hasFolder ? 'Cambiar Carpeta' : 'Vincular Carpeta'),
+                        ),
+                        if (_syncConfig.hasFolder) ...[
+                          FilledButton.tonalIcon(
+                            onPressed: _isSyncBusy ? null : _syncToFolderNow,
+                            icon: const Icon(Icons.save_rounded, size: 18),
+                            label: const Text('Guardar Aquí'),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _isSyncBusy ? null : _restoreFromFolderNow,
+                            icon: const Icon(Icons.restore_page_rounded, size: 18),
+                            label: const Text('Cargar de Aquí'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (_isSyncBusy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: LinearProgressIndicator(minHeight: 3),
+                ),
+            ],
+          ),
+
           const ExpressiveSectionHeader(title: 'Sistema de Notas'),
           RadioGroup<String>(
             groupValue: settings.escalaNotas,
@@ -159,25 +617,34 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
               ],
             ),
           ),
-          const ExpressiveSectionHeader(title: 'Copias de Seguridad'),
+
+          const ExpressiveSectionHeader(title: 'Copias de Seguridad Locales'),
           ExpressiveGroupedSection(
             children: [
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: TonalIconBadge(icon: Icons.data_object_rounded, color: tokens.accentColor),
+                title: const Text('Exportar Paquete Completo (.json)', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Ideal para subir directo a Google Drive desde el móvil o PC'),
+                onTap: _exportPortableBundle,
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 leading: const TonalIconBadge(icon: Icons.upload_file_rounded),
-                title: const Text('Exportar Datos', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Guardar una copia de seguridad en Descargas'),
+                title: const Text('Exportar Base SQLite (.db)', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Guardar archivo bruto NotasDB_backup.db'),
                 onTap: _exportBackup,
               ),
               ListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 leading: const TonalIconBadge(icon: Icons.download_rounded),
-                title: const Text('Importar Datos', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Restaurar desde una copia previa'),
+                title: const Text('Importar Datos (.json o .db)', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Restaurar desde Drive o almacenamiento y aplicar al instante'),
                 onTap: _importBackup,
               ),
             ],
           ),
+
           const ExpressiveSectionHeader(title: 'Almacenamiento'),
           ExpressiveGroupedSection(
             children: [

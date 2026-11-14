@@ -88,12 +88,16 @@ class UpdaterService {
 
       if (cleanLatest != currentVersion && _isNewer(currentVersion, cleanLatest)) {
         final assets = (data['assets'] as List<dynamic>? ?? const []);
+        final isWindows = Platform.isWindows;
         String? downloadUrl;
         int? apkSize;
         for (final rawAsset in assets) {
           if (rawAsset is Map<String, dynamic>) {
-            final name = (rawAsset['name'] ?? '').toString();
-            if (name.toLowerCase().endsWith('.apk')) {
+            final name = (rawAsset['name'] ?? '').toString().toLowerCase();
+            final matchesPlatform = isWindows
+                ? (name.endsWith('.zip') || name.endsWith('.exe'))
+                : name.endsWith('.apk');
+            if (matchesPlatform) {
               downloadUrl = rawAsset['browser_download_url']?.toString();
               final sizeVal = rawAsset['size'];
               if (sizeVal is int) {
@@ -118,8 +122,10 @@ class UpdaterService {
           );
         }
 
-        return const _UpdateCheckResult(
-          message: 'Nueva versión detectada, pero no hay APK adjunto en GitHub.',
+        return _UpdateCheckResult(
+          message: isWindows
+              ? 'Nueva versión detectada, pero aún no hay paquete de Windows adjunto en GitHub.'
+              : 'Nueva versión detectada, pero no hay APK adjunto en GitHub.',
         );
       }
 
@@ -286,9 +292,10 @@ class _UpdateScreenState extends State<UpdateScreen> {
   Future<(File partFile, File finalFile)> _resolveApkFiles() async {
     final dir = await getTemporaryDirectory();
     final safeVersion = widget.info.latestVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final ext = Platform.isWindows ? 'zip' : 'apk';
     return (
-      File('${dir.path}/update_v$safeVersion.apk.part'),
-      File('${dir.path}/update_v$safeVersion.apk'),
+      File('${dir.path}/update_v$safeVersion.$ext.part'),
+      File('${dir.path}/update_v$safeVersion.$ext'),
     );
   }
 
@@ -591,7 +598,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
 
       final result = await OpenFilex.open(
         finalFile.path,
-        type: 'application/vnd.android.package-archive',
+        type: Platform.isAndroid ? 'application/vnd.android.package-archive' : null,
       );
       if (!mounted) return;
 
@@ -828,8 +835,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
         const Spacer(),
         FilledButton.icon(
           onPressed: _installApk,
-          icon: const Icon(Icons.install_mobile_rounded),
-          label: const Text('Instalar Ahora'),
+          icon: Icon(Platform.isWindows ? Icons.folder_zip_rounded : Icons.install_mobile_rounded),
+          label: Text(Platform.isWindows ? 'Abrir Paquete' : 'Instalar Ahora'),
         ),
       ];
     }

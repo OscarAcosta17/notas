@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flex_color_picker/flex_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +34,7 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
   }
 
   Future<void> _syncNativeIcon() async {
+    if (!Platform.isAndroid) return;
     try {
       final nativeIcon = await _appIconChannel.invokeMethod<String>('getAppIcon');
       if (nativeIcon != null && mounted) {
@@ -49,6 +51,17 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
   Future<void> _changeIcon(String aliasKey) async {
     AppHaptics.selection(context);
     final notifier = ref.read(settingsProvider.notifier);
+    if (!Platform.isAndroid) {
+      await notifier.setAppIcon(aliasKey);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preferencia guardada (el cambio de ícono aplica al launcher de Android).'),
+          ),
+        );
+      }
+      return;
+    }
     try {
       await _appIconChannel.invokeMethod('setAppIcon', {'alias': aliasKey});
       await notifier.setAppIcon(aliasKey);

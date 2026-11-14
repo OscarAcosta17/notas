@@ -6,7 +6,23 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 ## 📥 Descargar APK (Versiones)
 
-Encuentra a continuación el historial de versiones de la aplicación y su correspondiente archivo APK para instalar directamente en Android.
+Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.zip)**.
+
+### [v1.2.3] - App de Escritorio Windows y Sincronización Cloud Multiplataforma
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.2.3.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.3/NotasApp-v1.2.3.apk) · [NotasApp-Windows-v1.2.3.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.2.3/NotasApp-Windows-v1.2.3.zip)
+
+#### ✨ Novedades y Mejoras:
+* **💻 App de Escritorio Nativa para Windows PC:** NotasApp ahora corre nativamente en Windows con SQLite de escritorio (`sqflite_common_ffi`), título de ventana dedicado, arrastre fluido con mouse/trackpad, resguardo seguro en servicios exclusivos de Android y publicación automática de paquete `.zip` junto al `.apk`.
+* **☁️ Sincronización Multiplataforma (Estilo Obsidian, sin cuentas complejas):** Nuevo `CloudSyncService` que empaqueta toda tu base académica (`semesters`, `subjects`, `categories`, `evaluations`, `horario_clases`) y tus ajustes visuales/escala en un paquete portable `notas_sync_bundle.json`.
+  * **🔐 Nube Privada en 1 Clic (GitHub Gist Secreto):** Conecta un token personal de GitHub (`gist`) para subir y descargar tus datos de forma privada entre tu teléfono Android y tu PC con recarga instantánea sin reiniciar la app.
+  * **📁 Carpeta Sincronizada (Google Drive Desktop / OneDrive):** En Windows o carpetas locales compatibles, vincula cualquier carpeta sincronizada en la nube para guardar o restaurar al instante, o usa auto-sincronización al editar datos.
+  * **📦 Paquete Portable `.json` e Importación Universal:** Exporta o importa tanto paquetes `.json` multiplataforma como bases SQLite `.db` tradicionales desde cualquier dispositivo.
+* **🐛 Sistema de Reporte de Fallos y Tickets en GitHub Issues:** Captura automática de errores y stack traces en segundo plano tanto en Android como en Windows, con formulario integrado para abrir tickets pre-rellenados o enviarlos directamente a GitHub con ficha técnica.
+* **🔄 Auto-Updater Multiplataforma:** Detecta automáticamente `.apk` en Android o `.zip` en Windows dentro de GitHub Releases.
+
+---
 
 ### [v1.2.2] - 5 Diseños de Navegación, Degradados en Ramos y Selector Visual de Icono
 **Fecha**: Noviembre 2026
