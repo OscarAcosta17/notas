@@ -36,7 +36,7 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.2.3)'),
+        title: const Text('Novedades (v1.2.4)'),
         content: const SingleChildScrollView(
           child: Text(
             '• 💻 App de Escritorio Nativa para Windows: Ejecuta NotasApp directamente en tu PC con base de datos SQLite local independiente, soporte táctil/mouse completo y actualizaciones automáticas multiplataforma.\n'

@@ -8,18 +8,29 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.zip)**.
 
-### [v1.2.3] - App de Escritorio Windows y Sincronización Cloud Multiplataforma
+### [v1.2.4] - Google Drive Sync (Estilo Obsidian) y 4 Nuevos Iconos Android 17
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.2.4.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.4/NotasApp-v1.2.4.apk) · [NotasApp-Windows-v1.2.4.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.2.4/NotasApp-Windows-v1.2.4.zip)
+
+#### ✨ Novedades y Mejoras:
+* **🟢 Sincronización Directa con Google Drive (Estilo `Obsidian-Google-Drive`, sin configurar Google Cloud):** Conecta tu cuenta en **Ajustes ➔ Datos y Respaldo ➔ Google Drive Sync**, inicia sesión en `ogd.richardxiong.com`, pega tu Refresh Token y sincroniza (`Subir ahora` / `Descargar` / auto-sync) tu paquete `notas_sync_bundle.json` directamente en la carpeta **`NotasApp`** de tu Google Drive mediante Drive API v3 tanto en Android como en Windows PC.
+* **🎨 4 Nuevos Iconos Estilo Android 17 (6 Opciones en Total):** Amplía **Ajustes ➔ Apariencia ➔ Icono de la App** con 4 propuestas funcionales y seleccionables en vivo para el launcher de Android y vista "Acerca de":
+  * **Cristal A+**, **Cápsulas M3**, **Libreta Glass** y **Material You Dúotono**, junto a **Clásico** y **Minimalista**.
+* **💻 Incluye todas las funciones de v1.2.3:** App nativa para Windows PC, GitHub Secret Gist, Carpeta Sincronizada, paquete portable `.json`, Sistema de Reporte de Fallos con Tickets en GitHub Issues y Auto-Updater Multiplataforma.
+
+---
+
+### [v1.2.3] - App de Escritorio Windows, Reporte de Fallos y Sincronización Local/Gist
 **Fecha**: Noviembre 2026
 
 **📦 Enlace de Descarga:** [NotasApp-v1.2.3.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.2.3/NotasApp-v1.2.3.apk) · [NotasApp-Windows-v1.2.3.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.2.3/NotasApp-Windows-v1.2.3.zip)
 
 #### ✨ Novedades y Mejoras:
 * **💻 App de Escritorio Nativa para Windows PC:** NotasApp ahora corre nativamente en Windows con SQLite de escritorio (`sqflite_common_ffi`), título de ventana dedicado, arrastre fluido con mouse/trackpad, resguardo seguro en servicios exclusivos de Android y publicación automática de paquete `.zip` junto al `.apk`.
-* **☁️ Sincronización Multiplataforma (Estilo Obsidian, sin configurar Google Cloud):** Nuevo `CloudSyncService` que empaqueta toda tu base académica (`semesters`, `subjects`, `categories`, `evaluations`, `horario_clases`) y tus ajustes visuales/escala en un paquete portable `notas_sync_bundle.json`.
-  * **🟢 Google Drive Directo (Estilo `Obsidian-Google-Drive`):** Inicia sesión en `ogd.richardxiong.com`, pega tu Refresh Token y sube/baja tus datos automáticamente hacia una carpeta **`NotasApp`** en tu Google Drive usando Drive API v3 tanto desde Android como desde Windows PC.
-  * **🔐 Nube Alternativa con GitHub Gist Secreto y Carpeta Local:** Soporta también respaldo en GitHub Gist privado, vinculación de carpetas Google Drive Desktop / OneDrive y auto-sincronización al editar datos.
+* **☁️ Base de Sincronización Multiplataforma (`CloudSyncService`):** Empaqueta toda tu base académica (`semesters`, `subjects`, `categories`, `evaluations`, `horario_clases`) y tus ajustes visuales/escala en un paquete portable `notas_sync_bundle.json`.
+  * **🔐 Nube Privada con GitHub Gist Secreto y Carpeta Local:** Respalda en GitHub Gist privado, vincula carpetas de Google Drive Desktop / OneDrive y activa auto-sincronización al editar datos.
   * **📦 Paquete Portable `.json` e Importación Universal:** Exporta o importa tanto paquetes `.json` multiplataforma como bases SQLite `.db` tradicionales desde cualquier dispositivo.
-* **🎨 4 Nuevos Iconos Estilo Android 17 (6 Opciones en Total):** Ahora puedes elegir entre **Clásico**, **Minimalista**, **Cristal A+**, **Cápsulas M3**, **Libreta Glass** y **Material You Dúotono** en **Ajustes ➔ Apariencia ➔ Icono de la App** (funcional en el launcher Android y previsualizado en la app).
 * **🐛 Sistema de Reporte de Fallos y Tickets en GitHub Issues:** Captura automática de errores y stack traces en segundo plano tanto en Android como en Windows, con formulario integrado para abrir tickets pre-rellenados o enviarlos directamente a GitHub con ficha técnica.
 * **🔄 Auto-Updater Multiplataforma:** Detecta automáticamente `.apk` en Android o `.zip` en Windows dentro de GitHub Releases.
 
