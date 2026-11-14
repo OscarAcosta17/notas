@@ -43,12 +43,64 @@
             </intent-filter>
         </activity-alias>
         
-        <!-- Alternative Icon Alias -->
+        <!-- Alternative Icon Alias 2 -->
         <activity-alias
             android:name="com.example.notas.Icon2"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/launcher_icon_2"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Android 17 Cristal A+ Icon Alias -->
+        <activity-alias
+            android:name="com.example.notas.Icon3"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/launcher_icon_3"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Android 17 Capsulas M3 Icon Alias -->
+        <activity-alias
+            android:name="com.example.notas.Icon4"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/launcher_icon_4"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Android 17 Libreta Glass Icon Alias -->
+        <activity-alias
+            android:name="com.example.notas.Icon5"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/launcher_icon_5"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Android 17 Material You Tonal Icon Alias -->
+        <activity-alias
+            android:name="com.example.notas.Icon6"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/launcher_icon_6"
             android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

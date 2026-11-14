@@ -11,6 +11,12 @@ class CloudSyncConfig {
   final String? folderPath;
   final String? githubToken;
   final String? gistId;
+  final String? googleDriveRefreshToken;
+  final String? googleDriveFolderId;
+  final String? googleDriveFileId;
+  final String? googleDriveClientId;
+  final String? googleDriveClientSecret;
+  final String? googleDriveTokenUrl;
   final bool autoSyncEnabled;
   final String? lastSyncIso;
 
@@ -18,29 +24,50 @@ class CloudSyncConfig {
     this.folderPath,
     this.githubToken,
     this.gistId,
+    this.googleDriveRefreshToken,
+    this.googleDriveFolderId,
+    this.googleDriveFileId,
+    this.googleDriveClientId,
+    this.googleDriveClientSecret,
+    this.googleDriveTokenUrl,
     this.autoSyncEnabled = false,
     this.lastSyncIso,
   });
 
   bool get hasFolder => folderPath != null && folderPath!.trim().isNotEmpty;
   bool get hasGistAuth => githubToken != null && githubToken!.trim().isNotEmpty;
+  bool get hasGoogleDriveAuth =>
+      googleDriveRefreshToken != null && googleDriveRefreshToken!.trim().isNotEmpty;
 }
 
 /// Obsidian-style multi-device synchronization service.
 ///
 /// Packages SQLite academic data plus visual/app preferences into a portable
 /// `notas_sync_bundle.json` file that syncs cleanly across Android and Desktop
-/// via either a linked Cloud Folder (Google Drive Desktop / OneDrive / local)
-/// or a private GitHub Secret Gist.
+/// via Google Drive (Obsidian-Google-Drive protocol), a private GitHub Gist, or
+/// a linked Cloud Folder.
 class CloudSyncService {
   static const String bundleFileName = 'notas_sync_bundle.json';
   static const int bundleFormatVersion = 1;
+  static const String ogdAuthPortalUrl = 'https://ogd.richardxiong.com';
+  static const String ogdDefaultTokenServerUrl =
+      'https://ogd-server.richardxiong.com/api/access';
+  static const String driveVaultName = 'NotasApp';
 
   static const _folderPathKey = 'sync_folder_path';
   static const _githubTokenKey = 'sync_github_token';
   static const _gistIdKey = 'sync_gist_id';
+  static const _gdriveRefreshTokenKey = 'sync_gdrive_refresh_token';
+  static const _gdriveFolderIdKey = 'sync_gdrive_folder_id';
+  static const _gdriveFileIdKey = 'sync_gdrive_file_id';
+  static const _gdriveClientIdKey = 'sync_gdrive_client_id';
+  static const _gdriveClientSecretKey = 'sync_gdrive_client_secret';
+  static const _gdriveTokenUrlKey = 'sync_gdrive_token_url';
   static const _autoSyncKey = 'sync_auto_enabled';
   static const _lastSyncKey = 'sync_last_time';
+
+  static String? _cachedDriveAccessToken;
+  static int _cachedDriveTokenExpiresAtMs = 0;
 
   static const List<String> _syncedPrefKeys = [
     'isDarkMode',
@@ -91,6 +118,9 @@ class CloudSyncService {
       if (config.hasFolder) {
         await syncToFolder(config.folderPath);
       }
+      if (config.hasGoogleDriveAuth) {
+        await uploadToGoogleDrive();
+      }
       if (config.hasGistAuth) {
         await uploadToGist();
       }
@@ -107,6 +137,12 @@ class CloudSyncService {
       folderPath: prefs.getString(_folderPathKey),
       githubToken: prefs.getString(_githubTokenKey),
       gistId: prefs.getString(_gistIdKey),
+      googleDriveRefreshToken: prefs.getString(_gdriveRefreshTokenKey),
+      googleDriveFolderId: prefs.getString(_gdriveFolderIdKey),
+      googleDriveFileId: prefs.getString(_gdriveFileIdKey),
+      googleDriveClientId: prefs.getString(_gdriveClientIdKey),
+      googleDriveClientSecret: prefs.getString(_gdriveClientSecretKey),
+      googleDriveTokenUrl: prefs.getString(_gdriveTokenUrlKey),
       autoSyncEnabled: prefs.getBool(_autoSyncKey) ?? false,
       lastSyncIso: prefs.getString(_lastSyncKey),
     );
@@ -118,6 +154,49 @@ class CloudSyncService {
       await prefs.remove(_folderPathKey);
     } else {
       await prefs.setString(_folderPathKey, path.trim());
+    }
+  }
+
+  static Future<void> setGoogleDriveCredentials({
+    required String? refreshToken,
+    String? clientId,
+    String? clientSecret,
+    String? tokenUrl,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    _cachedDriveAccessToken = null;
+    _cachedDriveTokenExpiresAtMs = 0;
+
+    if (refreshToken == null || refreshToken.trim().isEmpty) {
+      await prefs.remove(_gdriveRefreshTokenKey);
+      await prefs.remove(_gdriveFolderIdKey);
+      await prefs.remove(_gdriveFileIdKey);
+    } else {
+      await prefs.setString(_gdriveRefreshTokenKey, refreshToken.trim());
+    }
+
+    if (clientId != null) {
+      if (clientId.trim().isEmpty) {
+        await prefs.remove(_gdriveClientIdKey);
+      } else {
+        await prefs.setString(_gdriveClientIdKey, clientId.trim());
+      }
+    }
+
+    if (clientSecret != null) {
+      if (clientSecret.trim().isEmpty) {
+        await prefs.remove(_gdriveClientSecretKey);
+      } else {
+        await prefs.setString(_gdriveClientSecretKey, clientSecret.trim());
+      }
+    }
+
+    if (tokenUrl != null) {
+      if (tokenUrl.trim().isEmpty) {
+        await prefs.remove(_gdriveTokenUrlKey);
+      } else {
+        await prefs.setString(_gdriveTokenUrlKey, tokenUrl.trim());
+      }
     }
   }
 
@@ -430,5 +509,365 @@ class CloudSyncService {
     } finally {
       client.close();
     }
+  }
+
+  // --- Method 3: Google Drive Direct Sync (Obsidian-Google-Drive protocol) ---
+
+  static String _escapeDriveQuery(String value) =>
+      value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+
+  static Future<String> refreshGoogleDriveAccessToken([
+    String? customRefreshToken,
+  ]) async {
+    final config = await getConfig();
+    final refreshToken =
+        (customRefreshToken ?? config.googleDriveRefreshToken)?.trim() ?? '';
+    if (refreshToken.isEmpty) {
+      throw Exception(
+        'Configura primero tu Refresh Token de Google Drive (desde ogd.richardxiong.com).',
+      );
+    }
+
+    if (customRefreshToken == null &&
+        _cachedDriveAccessToken != null &&
+        DateTime.now().millisecondsSinceEpoch <
+            _cachedDriveTokenExpiresAtMs - 60000) {
+      return _cachedDriveAccessToken!;
+    }
+
+    final clientId = config.googleDriveClientId?.trim() ?? '';
+    final clientSecret = config.googleDriveClientSecret?.trim() ?? '';
+    final hasCustomClient = clientId.isNotEmpty && clientSecret.isNotEmpty;
+
+    final client = http.Client();
+    try {
+      final http.Response res;
+      if (hasCustomClient) {
+        res = await client
+            .post(
+              Uri.parse('https://oauth2.googleapis.com/token'),
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: {
+                'client_id': clientId,
+                'client_secret': clientSecret,
+                'grant_type': 'refresh_token',
+                'refresh_token': refreshToken,
+              },
+            )
+            .timeout(const Duration(seconds: 20));
+      } else {
+        final serverUrl = config.googleDriveTokenUrl?.trim().isNotEmpty == true
+            ? config.googleDriveTokenUrl!.trim()
+            : ogdDefaultTokenServerUrl;
+        res = await client
+            .post(
+              Uri.parse(serverUrl),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'refresh_token': refreshToken,
+                'clientId': clientId,
+                'clientSecret': clientSecret,
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
+      }
+
+      if (res.statusCode == 400 || res.statusCode == 401 || res.statusCode == 403) {
+        _cachedDriveAccessToken = null;
+        _cachedDriveTokenExpiresAtMs = 0;
+        throw Exception(
+          'Refresh Token de Google Drive rechazado (HTTP ${res.statusCode}). Vuelve a iniciar sesión en $ogdAuthPortalUrl y pega el nuevo token.',
+        );
+      }
+
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception(
+          'No se pudo obtener acceso a Google Drive (HTTP ${res.statusCode}).',
+        );
+      }
+
+      final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+      final accessToken = data['access_token']?.toString() ?? '';
+      if (accessToken.isEmpty) {
+        throw Exception('El servidor no devolvió un access_token válido.');
+      }
+
+      final expiresIn = (data['expires_in'] as num?)?.toInt() ?? 3600;
+      _cachedDriveAccessToken = accessToken;
+      _cachedDriveTokenExpiresAtMs =
+          DateTime.now().millisecondsSinceEpoch + (expiresIn * 1000);
+      return accessToken;
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<String> getOrCreateDriveVaultFolderId(
+    String accessToken, {
+    bool verify = false,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedId = prefs.getString(_gdriveFolderIdKey);
+    if (!verify && cachedId != null && cachedId.trim().isNotEmpty) {
+      return cachedId.trim();
+    }
+
+    final client = http.Client();
+    try {
+      final escapedVault = _escapeDriveQuery(driveVaultName);
+      final query =
+          "mimeType='application/vnd.google-apps.folder' and trashed=false and "
+          "properties has { key='obsidian' and value='vault' } and "
+          "properties has { key='vault' and value='$escapedVault' }";
+
+      final searchUri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+        'q': query,
+        'fields': 'files(id,name)',
+        'pageSize': '10',
+      });
+
+      final searchRes = await client
+          .get(
+            searchUri,
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (searchRes.statusCode >= 200 && searchRes.statusCode < 300) {
+        final decoded =
+            jsonDecode(utf8.decode(searchRes.bodyBytes)) as Map<String, dynamic>;
+        final files = (decoded['files'] as List?) ?? const [];
+        if (files.isNotEmpty) {
+          final existingId = (files.first as Map)['id']?.toString() ?? '';
+          if (existingId.isNotEmpty) {
+            await prefs.setString(_gdriveFolderIdKey, existingId);
+            return existingId;
+          }
+        }
+      }
+
+      // Create the NotasApp root vault folder with Obsidian-Google-Drive metadata
+      final createRes = await client
+          .post(
+            Uri.parse('https://www.googleapis.com/drive/v3/files'),
+            headers: {
+              'Authorization': 'Bearer $accessToken',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'name': driveVaultName,
+              'mimeType': 'application/vnd.google-apps.folder',
+              'description': 'Obsidian Vault: $driveVaultName',
+              'properties': {
+                'obsidian': 'vault',
+                'vault': driveVaultName,
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (createRes.statusCode < 200 || createRes.statusCode >= 300) {
+        throw Exception(
+          'No se pudo crear la carpeta $driveVaultName en Google Drive (HTTP ${createRes.statusCode}).',
+        );
+      }
+
+      final created =
+          jsonDecode(utf8.decode(createRes.bodyBytes)) as Map<String, dynamic>;
+      final newId = created['id']?.toString() ?? '';
+      if (newId.isEmpty) {
+        throw Exception('Google Drive no devolvió el ID de la carpeta $driveVaultName.');
+      }
+      await prefs.setString(_gdriveFolderIdKey, newId);
+      return newId;
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<String?> findDriveBundleFileId(
+    String accessToken, {
+    String? folderId,
+  }) async {
+    final client = http.Client();
+    try {
+      final escapedName = _escapeDriveQuery(bundleFileName);
+      final escapedVault = _escapeDriveQuery(driveVaultName);
+
+      Future<String?> runQuery(String q) async {
+        final uri = Uri.https('www.googleapis.com', '/drive/v3/files', {
+          'q': q,
+          'orderBy': 'modifiedTime desc',
+          'fields': 'files(id,name,modifiedTime)',
+          'pageSize': '5',
+        });
+        final res = await client
+            .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
+            .timeout(const Duration(seconds: 20));
+        if (res.statusCode < 200 || res.statusCode >= 300) return null;
+        final decoded =
+            jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+        final files = (decoded['files'] as List?) ?? const [];
+        if (files.isEmpty) return null;
+        final id = (files.first as Map)['id']?.toString();
+        return (id != null && id.isNotEmpty) ? id : null;
+      }
+
+      final primaryQ =
+          "name='$escapedName' and trashed=false and "
+          "properties has { key='vault' and value='$escapedVault' }";
+      final primaryId = await runQuery(primaryQ);
+      if (primaryId != null) return primaryId;
+
+      if (folderId != null && folderId.isNotEmpty) {
+        final escapedParent = _escapeDriveQuery(folderId);
+        return await runQuery(
+          "name='$escapedName' and '$escapedParent' in parents and trashed=false",
+        );
+      }
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  static Future<String> uploadToGoogleDrive() async {
+    final accessToken = await refreshGoogleDriveAccessToken();
+    final prefs = await SharedPreferences.getInstance();
+    var folderId = await getOrCreateDriveVaultFolderId(accessToken);
+    var fileId = prefs.getString(_gdriveFileIdKey)?.trim();
+    if (fileId == null || fileId.isEmpty) {
+      fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
+    }
+
+    final bundle = await buildSyncBundle();
+    const encoder = JsonEncoder.withIndent('  ');
+    final jsonContent = encoder.convert(bundle);
+
+    Future<http.Response> sendMultipart({required String? targetFileId, required String parentFolderId}) {
+      final boundary = 'notas_drive_${DateTime.now().millisecondsSinceEpoch}';
+      final metadata = <String, dynamic>{
+        'name': bundleFileName,
+        'mimeType': 'application/json',
+        'properties': {
+          'vault': driveVaultName,
+          'path': bundleFileName,
+        },
+      };
+      if (targetFileId == null) {
+        metadata['parents'] = [parentFolderId];
+      }
+
+      final payload = StringBuffer()
+        ..write('--$boundary\r\n')
+        ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+        ..write(jsonEncode(metadata))
+        ..write('\r\n--$boundary\r\n')
+        ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+        ..write(jsonContent)
+        ..write('\r\n--$boundary--');
+
+      final headers = {
+        'Authorization': 'Bearer $accessToken',
+        'Content-Type': 'multipart/related; boundary=$boundary',
+      };
+
+      final bodyBytes = utf8.encode(payload.toString());
+      if (targetFileId != null) {
+        return http
+            .patch(
+              Uri.parse(
+                'https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=multipart&fields=id',
+              ),
+              headers: headers,
+              body: bodyBytes,
+            )
+            .timeout(const Duration(seconds: 25));
+      }
+      return http
+          .post(
+            Uri.parse(
+              'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+            ),
+            headers: headers,
+            body: bodyBytes,
+          )
+          .timeout(const Duration(seconds: 25));
+    }
+
+    var res = await sendMultipart(targetFileId: fileId, parentFolderId: folderId);
+
+    // If cached fileId or folderId was deleted manually in Drive, re-verify and recreate cleanly
+    if (res.statusCode == 404) {
+      await prefs.remove(_gdriveFileIdKey);
+      folderId = await getOrCreateDriveVaultFolderId(accessToken, verify: true);
+      res = await sendMultipart(targetFileId: null, parentFolderId: folderId);
+    }
+
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      _cachedDriveAccessToken = null;
+      _cachedDriveTokenExpiresAtMs = 0;
+      throw Exception(
+        'Sin permisos o sesión expirada en Google Drive (HTTP ${res.statusCode}).',
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Error al subir copia a Google Drive (HTTP ${res.statusCode}).');
+    }
+
+    final decoded = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final savedFileId = decoded['id']?.toString() ?? fileId ?? '';
+    if (savedFileId.isNotEmpty) {
+      await prefs.setString(_gdriveFileIdKey, savedFileId);
+    }
+    await _recordLastSync();
+    return savedFileId;
+  }
+
+  static Future<Map<String, dynamic>> downloadFromGoogleDrive() async {
+    final accessToken = await refreshGoogleDriveAccessToken();
+    final prefs = await SharedPreferences.getInstance();
+    final folderId = await getOrCreateDriveVaultFolderId(accessToken);
+    final fileId = await findDriveBundleFileId(accessToken, folderId: folderId);
+
+    if (fileId == null || fileId.isEmpty) {
+      throw Exception(
+        'No se encontró "$bundleFileName" en tu carpeta NotasApp de Google Drive. Sube primero desde tu otro dispositivo.',
+      );
+    }
+
+    final res = await http
+        .get(
+          Uri.parse(
+            'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
+          ),
+          headers: {'Authorization': 'Bearer $accessToken'},
+        )
+        .timeout(const Duration(seconds: 25));
+
+    if (res.statusCode == 401 || res.statusCode == 403) {
+      _cachedDriveAccessToken = null;
+      _cachedDriveTokenExpiresAtMs = 0;
+      throw Exception(
+        'Sesión de Google Drive expirada (HTTP ${res.statusCode}). Revisa tu Refresh Token.',
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception(
+        'No se pudo descargar de Google Drive (HTTP ${res.statusCode}).',
+      );
+    }
+
+    final rawJson = utf8.decode(res.bodyBytes);
+    if (rawJson.trim().isEmpty) {
+      throw Exception('El archivo en Google Drive está vacío.');
+    }
+
+    final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+    await prefs.setString(_gdriveFileIdKey, fileId);
+    await applySyncBundle(decoded);
+    return decoded;
   }
 }

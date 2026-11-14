@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/updater_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
+import '../viewmodels/settings_provider.dart';
 import 'bug_report_sheet.dart';
 
 class AppInfoView extends StatefulWidget {
@@ -38,11 +40,10 @@ class _AppInfoViewState extends State<AppInfoView> {
         content: const SingleChildScrollView(
           child: Text(
             '• 💻 App de Escritorio Nativa para Windows: Ejecuta NotasApp directamente en tu PC con base de datos SQLite local independiente, soporte táctil/mouse completo y actualizaciones automáticas multiplataforma.\n'
-            '• ☁️ Sincronización Multiplataforma (Estilo Obsidian): Sincroniza tus semestres, ramos, horario, evaluaciones y ajustes visuales entre Android y Windows sin configurar cuentas complejas.\n'
-            '• 🔐 Nube Privada en 1 Clic (GitHub Gist Secreto): Vincula un token personal (scope gist) para subir o bajar tu copia completa cifrada en tránsito entre todos tus dispositivos.\n'
-            '• 📁 Carpeta Sincronizada y Paquete Portable (.json): Elige una carpeta de Google Drive / OneDrive en Windows o exporta un paquete completo notas_sync_bundle.json para compartir entre dispositivos.\n'
-            '• 🐛 Sistema de Reporte de Fallos y Tickets en GitHub: Captura automática de errores en segundo plano y formulario integrado para levantar Issues en GitHub con ficha técnica de Android o Windows.\n'
-            '• 🧭 Mantiene todo lo de v1.2.2: 5 diseños de barra de navegación, degradados en ramos, selector visual de icono en Android y modo OLED puro.',
+            '• ☁️ Sincronización con Google Drive (Obsidian Sync): Vincula tu cuenta mediante ogd.richardxiong.com y sincroniza tus ramos, notas, horario y ajustes en tu carpeta NotasApp de Drive entre Android y Windows.\n'
+            '• 🔐 Nube Alternativa y Carpeta Local: Soporta también GitHub Secret Gist en 1 clic, carpetas sincronizadas (Drive Desktop / OneDrive) y paquetes portables notas_sync_bundle.json.\n'
+            '• 🎨 4 Nuevos Iconos Android 17 (6 Opciones en Total): Elige entre Clásico, Minimalista, Cristal A+, Cápsulas M3, Libreta Glass y Material You Dúotono en Ajustes ➔ Apariencia.\n'
+            '• 🐛 Sistema de Reporte de Fallos y Tickets en GitHub: Captura automática de errores en segundo plano y formulario integrado para levantar Issues en GitHub con ficha técnica de Android o Windows.',
           ),
         ),
         actions: [
@@ -103,7 +104,28 @@ class _AppInfoViewState extends State<AppInfoView> {
               ),
               child: Column(
                 children: [
-                  const TonalIconBadge(icon: Icons.book_rounded, size: 72),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final appIcon = ref.watch(settingsProvider).appIcon;
+                      final assetPath = switch (appIcon) {
+                        'icon2' => 'assets/icon2.png',
+                        'icon3' => 'assets/icon_a17_cristal.png',
+                        'icon4' => 'assets/icon_a17_capsulas.png',
+                        'icon5' => 'assets/icon_a17_libreta.png',
+                        'icon6' => 'assets/icon_a17_tonal.png',
+                        _ => 'assets/icon.jpg',
+                      };
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Image.asset(
+                          assetPath,
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 14),
                   Text(
                     'NotasApp',

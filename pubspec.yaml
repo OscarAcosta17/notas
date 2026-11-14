@@ -83,6 +83,10 @@ flutter:
   assets:
     - assets/icon.jpg
     - assets/icon2.png
+    - assets/icon_a17_cristal.png
+    - assets/icon_a17_capsulas.png
+    - assets/icon_a17_libreta.png
+    - assets/icon_a17_tonal.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

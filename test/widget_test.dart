@@ -662,6 +662,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Sincronización Multiplataforma (Android y PC)'), findsOneWidget);
+      expect(find.text('Google Drive (Obsidian Sync)'), findsOneWidget);
+      expect(find.text('Subir a Google Drive'), findsOneWidget);
+      expect(find.text('Descargar de Google Drive'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Nube Privada (GitHub Gist)'),
+        200,
+        scrollable: find.byType(Scrollable),
+      );
       expect(find.text('Nube Privada (GitHub Gist)'), findsOneWidget);
 
       await tester.scrollUntilVisible(
@@ -752,6 +761,72 @@ void main() {
       expect(find.text('Levantar Ticket en GitHub'), findsOneWidget);
       expect(find.text('Enviar con Token API'), findsOneWidget);
       expect(find.text('Copiar Diagnóstico'), findsOneWidget);
+    });
+
+    test('CloudSyncService persists and clears Google Drive Obsidian credentials', () async {
+      SharedPreferences.setMockInitialValues({});
+
+      await CloudSyncService.setGoogleDriveCredentials(
+        refreshToken: '1//0test-refresh-token',
+        clientId: 'custom-client-id',
+        tokenUrl: 'https://ogd-server.richardxiong.com/api/access',
+      );
+
+      final cfg = await CloudSyncService.getConfig();
+      expect(cfg.hasGoogleDriveAuth, isTrue);
+      expect(cfg.googleDriveRefreshToken, '1//0test-refresh-token');
+      expect(cfg.googleDriveClientId, 'custom-client-id');
+      expect(cfg.googleDriveTokenUrl, 'https://ogd-server.richardxiong.com/api/access');
+
+      await CloudSyncService.setGoogleDriveCredentials(refreshToken: null);
+      final cleared = await CloudSyncService.getConfig();
+      expect(cleared.hasGoogleDriveAuth, isFalse);
+      expect(cleared.googleDriveRefreshToken, isNull);
+    });
+
+    testWidgets('AppearanceSettingsView renders all 6 selectable app icons and updates selection',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      late WidgetRef capturedRef;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) {
+                capturedRef = ref;
+                return const AppearanceSettingsView();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(
+        find.text('Cristal A+'),
+        300,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Clásico'), findsOneWidget);
+      expect(find.text('Minimalista (Nuevo)'), findsOneWidget);
+      expect(find.text('Cristal A+'), findsOneWidget);
+      expect(find.text('Cápsulas M3'), findsOneWidget);
+
+      await tester.scrollUntilVisible(
+        find.text('Material You'),
+        300,
+        scrollable: find.byType(Scrollable),
+      );
+      expect(find.text('Libreta Glass'), findsOneWidget);
+      expect(find.text('Material You'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Cristal A+'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cristal A+'));
+      await tester.pumpAndSettle();
+
+      expect(capturedRef.read(settingsProvider).appIcon, 'icon3');
     });
   });
 }

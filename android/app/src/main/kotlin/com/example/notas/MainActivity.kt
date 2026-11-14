@@ -27,38 +27,50 @@ class MainActivity: FlutterActivity() {
             }
         }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICON_CHANNEL).setMethodCallHandler { call, result ->
-            val classicComponent = ComponentName(packageName, "com.example.notas.MainActivityAlias")
-            val icon2Component = ComponentName(packageName, "com.example.notas.Icon2")
+        val iconAliases = linkedMapOf(
+            "classic" to "com.example.notas.MainActivityAlias",
+            "icon2" to "com.example.notas.Icon2",
+            "icon3" to "com.example.notas.Icon3",
+            "icon4" to "com.example.notas.Icon4",
+            "icon5" to "com.example.notas.Icon5",
+            "icon6" to "com.example.notas.Icon6"
+        )
 
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_ICON_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
                 "setAppIcon" -> {
                     val alias = call.argument<String>("alias") ?: "classic"
-                    val target = if (alias == "icon2") icon2Component else classicComponent
-                    val other = if (alias == "icon2") classicComponent else icon2Component
+                    val targetClass = iconAliases[alias] ?: iconAliases.getValue("classic")
 
                     try {
                         packageManager.setComponentEnabledSetting(
-                            target,
+                            ComponentName(packageName, targetClass),
                             PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                             PackageManager.DONT_KILL_APP
                         )
-                        packageManager.setComponentEnabledSetting(
-                            other,
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                            PackageManager.DONT_KILL_APP
-                        )
+                        for ((_, cls) in iconAliases) {
+                            if (cls != targetClass) {
+                                packageManager.setComponentEnabledSetting(
+                                    ComponentName(packageName, cls),
+                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                                    PackageManager.DONT_KILL_APP
+                                )
+                            }
+                        }
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("ICON_ERROR", e.localizedMessage, null)
                     }
                 }
                 "getAppIcon" -> {
-                    val icon2State = packageManager.getComponentEnabledSetting(icon2Component)
-                    val current = if (icon2State == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
-                        "icon2"
-                    } else {
-                        "classic"
+                    var current = "classic"
+                    for ((key, cls) in iconAliases) {
+                        if (key == "classic") continue
+                        val state = packageManager.getComponentEnabledSetting(ComponentName(packageName, cls))
+                        if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
+                            current = key
+                            break
+                        }
                     }
                     result.success(current)
                 }

@@ -17,6 +17,22 @@ class AppearanceSettingsView extends ConsumerStatefulWidget {
 class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView> {
   static const _appIconChannel = MethodChannel('com.example.notas/app_icon');
 
+  static const _appIconOptions = <({String id, String title, String subtitle, String assetPath})>[
+    (id: 'classic', title: 'Clásico', subtitle: 'Cuaderno original', assetPath: 'assets/icon.jpg'),
+    (id: 'icon2', title: 'Minimalista (Nuevo)', subtitle: 'Diseño limpio', assetPath: 'assets/icon2.png'),
+    (id: 'icon3', title: 'Cristal A+', subtitle: 'Android 17 Frosted', assetPath: 'assets/icon_a17_cristal.png'),
+    (id: 'icon4', title: 'Cápsulas M3', subtitle: 'Android 17 Expressive', assetPath: 'assets/icon_a17_capsulas.png'),
+    (id: 'icon5', title: 'Libreta Glass', subtitle: 'Cristal translúcido', assetPath: 'assets/icon_a17_libreta.png'),
+    (id: 'icon6', title: 'Material You', subtitle: 'Dúotono tonal', assetPath: 'assets/icon_a17_tonal.png'),
+  ];
+
+  static String _iconTitleFor(String id) {
+    for (final opt in _appIconOptions) {
+      if (opt.id == id) return opt.title;
+    }
+    return 'Clásico';
+  }
+
   static const _presetAccents = <({int? value, String label, Color? swatch})>[
     (value: null, label: 'Mono', swatch: null),
     (value: 0xFF2563EB, label: 'Azul', swatch: Color(0xFF2563EB)),
@@ -69,7 +85,7 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Icono cambiado a ${aliasKey == 'icon2' ? 'Minimalista' : 'Clásico'} (puede tardar unos segundos en reflejarse en el launcher)',
+              'Icono cambiado a ${_iconTitleFor(aliasKey)} (puede tardar unos segundos en reflejarse en el launcher)',
             ),
           ),
         );
@@ -773,39 +789,42 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Toca un icono para cambiar el acceso directo en tu pantalla de inicio',
+                      'Toca un icono para cambiar el acceso directo en Android y la vista en la app',
                       style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildIconOptionCard(
-                            context: context,
-                            tokens: tokens,
-                            scheme: scheme,
-                            title: 'Clásico',
-                            subtitle: 'Cuaderno original',
-                            assetPath: 'assets/icon.jpg',
-                            isSelected: settings.appIcon != 'icon2',
-                            onTap: () => _changeIcon('classic'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildIconOptionCard(
-                            context: context,
-                            tokens: tokens,
-                            scheme: scheme,
-                            title: 'Minimalista (Nuevo)',
-                            subtitle: 'Diseño limpio',
-                            assetPath: 'assets/icon2.png',
-                            isSelected: settings.appIcon == 'icon2',
-                            onTap: () => _changeIcon('icon2'),
-                          ),
-                        ),
-                      ],
-                    ),
+                    for (int i = 0; i < _appIconOptions.length; i += 2) ...[
+                      if (i > 0) const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          for (int j = 0; j < 2; j++)
+                            if (i + j < _appIconOptions.length) ...[
+                              if (j > 0) const SizedBox(width: 12),
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    final opt = _appIconOptions[i + j];
+                                    final isDefaultClassic = opt.id == 'classic' &&
+                                        !_appIconOptions.any(
+                                          (o) => o.id != 'classic' && o.id == settings.appIcon,
+                                        );
+                                    return _buildIconOptionCard(
+                                      context: context,
+                                      tokens: tokens,
+                                      scheme: scheme,
+                                      title: opt.title,
+                                      subtitle: opt.subtitle,
+                                      assetPath: opt.assetPath,
+                                      isSelected: settings.appIcon == opt.id || isDefaultClassic,
+                                      onTap: () => _changeIcon(opt.id),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

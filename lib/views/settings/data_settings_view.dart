@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/cloud_sync_service.dart';
 import '../../services/database_helper.dart';
 import '../../theme/app_theme.dart';
@@ -189,6 +190,283 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error al cargar desde carpeta: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _openGoogleDriveSetupDialog() async {
+    final tokenController = TextEditingController(
+      text: _syncConfig.googleDriveRefreshToken ?? '',
+    );
+    final clientIdController = TextEditingController(
+      text: _syncConfig.googleDriveClientId ?? '',
+    );
+    final clientSecretController = TextEditingController(
+      text: _syncConfig.googleDriveClientSecret ?? '',
+    );
+    final tokenUrlController = TextEditingController(
+      text: _syncConfig.googleDriveTokenUrl ?? '',
+    );
+
+    bool isVerifying = false;
+    String? errorMsg;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final scheme = Theme.of(dialogContext).colorScheme;
+          return AlertDialog(
+            title: const Text('Conectar Google Drive'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Sincroniza igual que el plugin de comunidad Obsidian Google Drive, sin configurar Google Cloud:',
+                    style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      onPressed: isVerifying
+                          ? null
+                          : () async {
+                              final uri = Uri.parse(CloudSyncService.ogdAuthPortalUrl);
+                              final launched = await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                              if (!launched && dialogContext.mounted) {
+                                await Clipboard.setData(
+                                  const ClipboardData(
+                                    text: CloudSyncService.ogdAuthPortalUrl,
+                                  ),
+                                );
+                                setDialogState(() {
+                                  errorMsg =
+                                      'No se pudo abrir el navegador. Enlace copiado: ${CloudSyncService.ogdAuthPortalUrl}';
+                                });
+                              }
+                            },
+                      icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                      label: const Text('1. Iniciar sesión en Google (ogd)'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '2. Presiona "Sign In" arriba a la derecha en esa web, autoriza Google Drive y copia el Refresh Token que aparece.\n'
+                    '3. Pégalo aquí abajo:',
+                    style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: tokenController,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: 'Google Drive Refresh Token',
+                      hintText: '1//0...',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        tooltip: 'Pegar',
+                        icon: const Icon(Icons.content_paste_rounded),
+                        onPressed: () async {
+                          final clip = await Clipboard.getData('text/plain');
+                          final pasted = clip?.text?.trim() ?? '';
+                          if (pasted.isNotEmpty) {
+                            tokenController.text = pasted;
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    title: Text(
+                      'Opciones avanzadas (OAuth propio / servidor propio)',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    children: [
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: tokenUrlController,
+                        decoration: const InputDecoration(
+                          labelText: 'Token Server URL (opcional)',
+                          hintText: CloudSyncService.ogdDefaultTokenServerUrl,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: clientIdController,
+                        decoration: const InputDecoration(
+                          labelText: 'Client ID personalizado (opcional)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: clientSecretController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Client Secret personalizado (opcional)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      errorMsg!,
+                      style: TextStyle(color: scheme.error, fontSize: 12.5),
+                    ),
+                  ],
+                  if (isVerifying) ...[
+                    const SizedBox(height: 10),
+                    const LinearProgressIndicator(minHeight: 3),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              if (_syncConfig.hasGoogleDriveAuth)
+                TextButton(
+                  onPressed: isVerifying
+                      ? null
+                      : () async {
+                          await CloudSyncService.setGoogleDriveCredentials(
+                            refreshToken: null,
+                            clientId: '',
+                            clientSecret: '',
+                            tokenUrl: '',
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext, false);
+                          }
+                        },
+                  child: const Text('Desconectar'),
+                ),
+              TextButton(
+                onPressed: isVerifying
+                    ? null
+                    : () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: isVerifying
+                    ? null
+                    : () async {
+                        final rawToken = tokenController.text.trim();
+                        if (rawToken.isEmpty) {
+                          setDialogState(() {
+                            errorMsg = 'Pega tu Refresh Token antes de guardar.';
+                          });
+                          return;
+                        }
+                        setDialogState(() {
+                          isVerifying = true;
+                          errorMsg = null;
+                        });
+                        try {
+                          await CloudSyncService.setGoogleDriveCredentials(
+                            refreshToken: rawToken,
+                            clientId: clientIdController.text.trim(),
+                            clientSecret: clientSecretController.text.trim(),
+                            tokenUrl: tokenUrlController.text.trim(),
+                          );
+                          await CloudSyncService.refreshGoogleDriveAccessToken();
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext, true);
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            isVerifying = false;
+                            errorMsg = e.toString().replaceFirst('Exception: ', '');
+                          });
+                        }
+                      },
+                child: const Text('Conectar y Guardar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    tokenController.dispose();
+    clientIdController.dispose();
+    clientSecretController.dispose();
+    tokenUrlController.dispose();
+
+    await _loadSyncConfig();
+    if (saved == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google Drive conectado correctamente (carpeta NotasApp).'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pushGoogleDriveNow() async {
+    if (_isSyncBusy) return;
+    if (!_syncConfig.hasGoogleDriveAuth) {
+      await _openGoogleDriveSetupDialog();
+      return;
+    }
+    setState(() => _isSyncBusy = true);
+    try {
+      await CloudSyncService.uploadToGoogleDrive();
+      await _loadSyncConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Datos y ajustes subidos a tu carpeta NotasApp en Google Drive.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al subir a Google Drive: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncBusy = false);
+    }
+  }
+
+  Future<void> _pullGoogleDriveNow() async {
+    if (_isSyncBusy) return;
+    if (!_syncConfig.hasGoogleDriveAuth) {
+      await _openGoogleDriveSetupDialog();
+      return;
+    }
+    setState(() => _isSyncBusy = true);
+    try {
+      await CloudSyncService.downloadFromGoogleDrive();
+      await _refreshAppStateAfterRestore();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notas y apariencia descargadas desde Google Drive.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al descargar de Google Drive: $e')),
         );
       }
     } finally {
@@ -464,6 +742,65 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
                     CloudSyncService.scheduleAutoSync();
                   }
                 },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        TonalIconBadge(icon: Icons.add_to_drive_rounded, color: tokens.accentColor),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Google Drive (Obsidian Sync)',
+                                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                              ),
+                              Text(
+                                _syncConfig.hasGoogleDriveAuth
+                                    ? 'Conectado a carpeta NotasApp en Google Drive'
+                                    : 'Inicia sesión con ogd.richardxiong.com y pega tu token',
+                                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.settings_rounded),
+                          tooltip: 'Configurar Google Drive',
+                          onPressed: _openGoogleDriveSetupDialog,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (!_syncConfig.hasGoogleDriveAuth)
+                          FilledButton.tonalIcon(
+                            onPressed: _isSyncBusy ? null : _openGoogleDriveSetupDialog,
+                            icon: const Icon(Icons.login_rounded, size: 18),
+                            label: const Text('Obtener Token Web'),
+                          ),
+                        FilledButton.tonalIcon(
+                          onPressed: _isSyncBusy ? null : _pushGoogleDriveNow,
+                          icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+                          label: const Text('Subir a Google Drive'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _isSyncBusy ? null : _pullGoogleDriveNow,
+                          icon: const Icon(Icons.cloud_download_rounded, size: 18),
+                          label: const Text('Descargar de Google Drive'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),

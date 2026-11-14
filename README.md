@@ -15,10 +15,11 @@ Encuentra a continuación el historial de versiones de la aplicación y sus inst
 
 #### ✨ Novedades y Mejoras:
 * **💻 App de Escritorio Nativa para Windows PC:** NotasApp ahora corre nativamente en Windows con SQLite de escritorio (`sqflite_common_ffi`), título de ventana dedicado, arrastre fluido con mouse/trackpad, resguardo seguro en servicios exclusivos de Android y publicación automática de paquete `.zip` junto al `.apk`.
-* **☁️ Sincronización Multiplataforma (Estilo Obsidian, sin cuentas complejas):** Nuevo `CloudSyncService` que empaqueta toda tu base académica (`semesters`, `subjects`, `categories`, `evaluations`, `horario_clases`) y tus ajustes visuales/escala en un paquete portable `notas_sync_bundle.json`.
-  * **🔐 Nube Privada en 1 Clic (GitHub Gist Secreto):** Conecta un token personal de GitHub (`gist`) para subir y descargar tus datos de forma privada entre tu teléfono Android y tu PC con recarga instantánea sin reiniciar la app.
-  * **📁 Carpeta Sincronizada (Google Drive Desktop / OneDrive):** En Windows o carpetas locales compatibles, vincula cualquier carpeta sincronizada en la nube para guardar o restaurar al instante, o usa auto-sincronización al editar datos.
+* **☁️ Sincronización Multiplataforma (Estilo Obsidian, sin configurar Google Cloud):** Nuevo `CloudSyncService` que empaqueta toda tu base académica (`semesters`, `subjects`, `categories`, `evaluations`, `horario_clases`) y tus ajustes visuales/escala en un paquete portable `notas_sync_bundle.json`.
+  * **🟢 Google Drive Directo (Estilo `Obsidian-Google-Drive`):** Inicia sesión en `ogd.richardxiong.com`, pega tu Refresh Token y sube/baja tus datos automáticamente hacia una carpeta **`NotasApp`** en tu Google Drive usando Drive API v3 tanto desde Android como desde Windows PC.
+  * **🔐 Nube Alternativa con GitHub Gist Secreto y Carpeta Local:** Soporta también respaldo en GitHub Gist privado, vinculación de carpetas Google Drive Desktop / OneDrive y auto-sincronización al editar datos.
   * **📦 Paquete Portable `.json` e Importación Universal:** Exporta o importa tanto paquetes `.json` multiplataforma como bases SQLite `.db` tradicionales desde cualquier dispositivo.
+* **🎨 4 Nuevos Iconos Estilo Android 17 (6 Opciones en Total):** Ahora puedes elegir entre **Clásico**, **Minimalista**, **Cristal A+**, **Cápsulas M3**, **Libreta Glass** y **Material You Dúotono** en **Ajustes ➔ Apariencia ➔ Icono de la App** (funcional en el launcher Android y previsualizado en la app).
 * **🐛 Sistema de Reporte de Fallos y Tickets en GitHub Issues:** Captura automática de errores y stack traces en segundo plano tanto en Android como en Windows, con formulario integrado para abrir tickets pre-rellenados o enviarlos directamente a GitHub con ficha técnica.
 * **🔄 Auto-Updater Multiplataforma:** Detecta automáticamente `.apk` en Android o `.zip` en Windows dentro de GitHub Releases.
 
