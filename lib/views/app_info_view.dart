@@ -36,14 +36,14 @@ class _AppInfoViewState extends State<AppInfoView> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Novedades (v1.2.4)'),
+        title: const Text('Novedades (v1.3.0)'),
         content: const SingleChildScrollView(
           child: Text(
-            '• 💻 App de Escritorio Nativa para Windows: Ejecuta NotasApp directamente en tu PC con base de datos SQLite local independiente, soporte táctil/mouse completo y actualizaciones automáticas multiplataforma.\n'
-            '• ☁️ Sincronización con Google Drive (Obsidian Sync): Vincula tu cuenta mediante ogd.richardxiong.com y sincroniza tus ramos, notas, horario y ajustes en tu carpeta NotasApp de Drive entre Android y Windows.\n'
-            '• 🔐 Nube Alternativa y Carpeta Local: Soporta también GitHub Secret Gist en 1 clic, carpetas sincronizadas (Drive Desktop / OneDrive) y paquetes portables notas_sync_bundle.json.\n'
-            '• 🎨 4 Nuevos Iconos Android 17 (6 Opciones en Total): Elige entre Clásico, Minimalista, Cristal A+, Cápsulas M3, Libreta Glass y Material You Dúotono en Ajustes ➔ Apariencia.\n'
-            '• 🐛 Sistema de Reporte de Fallos y Tickets en GitHub: Captura automática de errores en segundo plano y formulario integrado para levantar Issues en GitHub con ficha técnica de Android o Windows.',
+            '• 🏛️ Pestaña Integrada de Aula USM (Sinergia Total): Inicia sesión en Aula USM (WebView en Android, Token/Cookie, vinculación PIN con Aula-Scrapt PC o importación automática local en Windows) para explorar cursos, descargar archivos por carpeta o semana y evitar descargas duplicadas.\n'
+            '• 🔗 Vínculo Directo con Ramos, Agenda y Obsidian: Crea ramos faltantes en NotasApp con su color y estilo Android 17 en 1 clic, envía tareas y cuestionarios con fecha límite directo a la Agenda y exporta grafos Markdown para Obsidian.\n'
+            '• 🪟 Instalador Real de Windows (.exe) y Auto-Actualización 100% Automática: Nuevo instalador oficial NotasApp-Setup.exe con accesos directos e icono Cristal A+. Al actualizar en PC, NotasApp descarga el instalador, aplica la actualización silenciosa y se reinicia sola.\n'
+            '• ☁️ Sincronización Multiplataforma Ampliada: Cloud Sync (Google Drive, Gist y Carpeta Local) ahora respalda tus mapeos de carpetas de Aula, vínculos con ramos y configuración entre Android y Windows.\n'
+            '• 💻 Incluye todas las mejoras anteriores: Google Drive Sync estilo Obsidian, 6 iconos Android 17, 5 barras de navegación y Sistema de Reporte de Fallos en GitHub Issues.',
           ),
         ),
         actions: [

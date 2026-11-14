@@ -221,13 +221,13 @@ class BugReportService {
     bool includeLogs = true,
     String? appVersionOverride,
   }) async {
-    String versionText = appVersionOverride ?? 'v1.2.4+25';
+    String versionText = appVersionOverride ?? 'v1.3.0+26';
     if (appVersionOverride == null) {
       try {
         final info = await PackageInfo.fromPlatform();
         versionText = 'v${info.version}+${info.buildNumber}';
       } catch (_) {
-        versionText = 'v1.2.4+25';
+        versionText = 'v1.3.0+26';
       }
     }
 

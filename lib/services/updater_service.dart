@@ -94,17 +94,22 @@ class UpdaterService {
         for (final rawAsset in assets) {
           if (rawAsset is Map<String, dynamic>) {
             final name = (rawAsset['name'] ?? '').toString().toLowerCase();
-            final matchesPlatform = isWindows
-                ? (name.endsWith('.zip') || name.endsWith('.exe'))
-                : name.endsWith('.apk');
-            if (matchesPlatform) {
+            if (isWindows) {
+              if (name.endsWith('.exe')) {
+                downloadUrl = rawAsset['browser_download_url']?.toString();
+                final sizeVal = rawAsset['size'];
+                apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
+                break;
+              }
+              if (name.endsWith('.zip') && downloadUrl == null) {
+                downloadUrl = rawAsset['browser_download_url']?.toString();
+                final sizeVal = rawAsset['size'];
+                apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
+              }
+            } else if (name.endsWith('.apk')) {
               downloadUrl = rawAsset['browser_download_url']?.toString();
               final sizeVal = rawAsset['size'];
-              if (sizeVal is int) {
-                apkSize = sizeVal;
-              } else if (sizeVal is num) {
-                apkSize = sizeVal.toInt();
-              }
+              apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
               break;
             }
           }
@@ -292,7 +297,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
   Future<(File partFile, File finalFile)> _resolveApkFiles() async {
     final dir = await getTemporaryDirectory();
     final safeVersion = widget.info.latestVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final ext = Platform.isWindows ? 'zip' : 'apk';
+    final lowerUrl = widget.info.downloadUrl.toLowerCase();
+    final ext = Platform.isWindows ? (lowerUrl.contains('.exe') ? 'exe' : 'zip') : 'apk';
     return (
       File('${dir.path}/update_v$safeVersion.$ext.part'),
       File('${dir.path}/update_v$safeVersion.$ext'),
@@ -596,6 +602,10 @@ class _UpdateScreenState extends State<UpdateScreen> {
         }
       }
 
+      if (Platform.isWindows) {
+        await _installWindowsUpdate(finalFile);
+        return;
+      }
       final result = await OpenFilex.open(
         finalFile.path,
         type: Platform.isAndroid ? 'application/vnd.android.package-archive' : null,
@@ -835,8 +845,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
         const Spacer(),
         FilledButton.icon(
           onPressed: _installApk,
-          icon: Icon(Platform.isWindows ? Icons.folder_zip_rounded : Icons.install_mobile_rounded),
-          label: Text(Platform.isWindows ? 'Abrir Paquete' : 'Instalar Ahora'),
+          icon: Icon(Platform.isWindows ? Icons.system_update_alt_rounded : Icons.install_mobile_rounded),
+          label: Text(Platform.isWindows ? 'Instalar y Reiniciar' : 'Instalar Ahora'),
         ),
       ];
     }
@@ -868,5 +878,88 @@ class _UpdateScreenState extends State<UpdateScreen> {
         label: const Text('Actualizar Ahora'),
       ),
     ];
+  }
+
+  String _psQuote(String value) => value.replaceAll("'", "''");
+
+  Future<void> _installWindowsUpdate(File packageFile) async {
+    final currentExePath = Platform.resolvedExecutable;
+    final appDir = File(currentExePath).parent.path;
+    final packagePath = packageFile.path;
+    final isExeInstaller = packagePath.toLowerCase().endsWith('.exe');
+    final tempDir = await getTemporaryDirectory();
+    final psFile = File('${tempDir.path}${Platform.pathSeparator}notas_auto_update.ps1');
+    final extractDir = '${tempDir.path}${Platform.pathSeparator}notas_update_extract';
+
+    final psScript = '''
+\$ErrorActionPreference = 'SilentlyContinue'
+\$currentPid = $pid
+Wait-Process -Id \$currentPid -Timeout 12 -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+\$packagePath = '${_psQuote(packagePath)}'
+\$currentExe = '${_psQuote(currentExePath)}'
+\$appDir = '${_psQuote(appDir)}'
+\$extractDir = '${_psQuote(extractDir)}'
+\$isExe = ${isExeInstaller ? r'$true' : r'$false'}
+
+if (\$isExe) {
+  \$proc = Start-Process -FilePath \$packagePath -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS' -Wait -PassThru
+  \$targetExe = \$null
+  foreach (\$regPath in @(
+    'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8E7D9A4C-5F2B-4B9E-A6D1-20260705C0DE}_is1',
+    'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{8E7D9A4C-5F2B-4B9E-A6D1-20260705C0DE}_is1'
+  )) {
+    if (Test-Path \$regPath) {
+      \$loc = (Get-ItemProperty -LiteralPath \$regPath -ErrorAction SilentlyContinue).InstallLocation
+      if (\$loc) {
+        \$candidate = Join-Path \$loc 'notas.exe'
+        if (Test-Path -LiteralPath \$candidate) {
+          \$targetExe = \$candidate
+          break
+        }
+      }
+    }
+  }
+  if (-not \$targetExe) {
+    \$defaultExe = Join-Path \$env:LOCALAPPDATA 'Programs\\NotasApp\\notas.exe'
+    if (Test-Path -LiteralPath \$defaultExe) { \$targetExe = \$defaultExe }
+  }
+  if (-not \$targetExe) { \$targetExe = \$currentExe }
+  if (Test-Path -LiteralPath \$targetExe) {
+    Start-Process -FilePath \$targetExe
+  }
+} else {
+  if (Test-Path -LiteralPath \$extractDir) {
+    Remove-Item -LiteralPath \$extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  Expand-Archive -LiteralPath \$packagePath -DestinationPath \$extractDir -Force
+  Copy-Item -Path (Join-Path \$extractDir '*') -Destination \$appDir -Recurse -Force
+  Remove-Item -LiteralPath \$extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath \$currentExe) {
+    Start-Process -FilePath \$currentExe
+  }
+}
+
+Remove-Item -LiteralPath \$MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+''';
+
+    await psFile.writeAsString(psScript, flush: true);
+
+    if (mounted) {
+      setState(() {
+        _status = isExeInstaller
+            ? 'Instalando actualización y reiniciando NotasApp...'
+            : 'Extrayendo archivos y reiniciando NotasApp...';
+      });
+    }
+
+    await Process.start(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', psFile.path],
+      mode: ProcessStartMode.detached,
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    exit(0);
   }
 }

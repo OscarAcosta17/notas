@@ -2,6 +2,7 @@ package com.example.notas
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.webkit.CookieManager
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -11,9 +12,26 @@ import java.lang.reflect.Field
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.notas/sounds"
     private val APP_ICON_CHANNEL = "com.example.notas/app_icon"
+    private val AULA_COOKIE_CHANNEL = "com.example.notas/aula_cookies"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AULA_COOKIE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getCookies" -> {
+                    val url = call.argument<String>("url") ?: "https://aula.usm.cl"
+                    val cookies = CookieManager.getInstance().getCookie(url) ?: ""
+                    result.success(cookies)
+                }
+                "clearCookies" -> {
+                    CookieManager.getInstance().removeAllCookies {
+                        CookieManager.getInstance().flush()
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getRawSounds") {
                 val sounds = mutableListOf<String>()

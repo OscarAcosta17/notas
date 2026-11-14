@@ -77,15 +77,29 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
+      - name: Build Windows installer (.exe)
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $ver = $tag.TrimStart('v') -replace '-.*$', ''
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y
+          }
+          & $iscc "/DAppTag=$tag" "/DAppVer=$ver" "windows\installer.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Package Windows release ZIP
         shell: pwsh
         run: Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "NotasApp-Windows-$($env:GITHUB_REF_NAME).zip" -Force
 
-      - name: Upload Windows ZIP artifact
+      - name: Upload Windows release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-zip
-          path: NotasApp-Windows-${{ github.ref_name }}.zip
+          path: |
+            NotasApp-Windows-${{ github.ref_name }}.zip
+            NotasApp-Setup-${{ github.ref_name }}.exe
 
   release:
     name: Publish GitHub Release
@@ -146,6 +160,7 @@ jobs:
           body_path: release_notes.md
           files: |
             NotasApp-${{ github.ref_name }}.apk
+            NotasApp-Setup-${{ github.ref_name }}.exe
             NotasApp-Windows-${{ github.ref_name }}.zip
           draft: false
           prerelease: false

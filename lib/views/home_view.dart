@@ -8,6 +8,7 @@ import '../viewmodels/semestre_provider.dart';
 import '../viewmodels/settings_provider.dart';
 import 'add_semestre_dialog.dart';
 import 'agenda_view.dart';
+import 'aula_view.dart';
 import 'edit_semestre_dialog.dart';
 import 'horario_view.dart';
 import 'semestre_detail_view.dart';
@@ -27,6 +28,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
   bool _isRamoSelectionMode = false;
   int _horarioRefreshTick = 0;
   int _agendaRefreshTick = 0;
+  int _aulaRefreshTick = 0;
 
   late final PageController _pageController;
   final GlobalKey<SemestreDetailViewState> _semestreDetailKey = GlobalKey<SemestreDetailViewState>();
@@ -59,6 +61,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
       if (index != 0) _isRamoSelectionMode = false;
       if (index == 1) _horarioRefreshTick++;
       if (index == 2) _agendaRefreshTick++;
+      if (index == 3) _aulaRefreshTick++;
     });
 
     if (_pageController.hasClients) {
@@ -93,6 +96,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
       if (_programmaticTargetTab == null && changed) {
         if (index == 1) _horarioRefreshTick++;
         if (index == 2) _agendaRefreshTick++;
+        if (index == 3) _aulaRefreshTick++;
       }
     });
   }
@@ -631,6 +635,16 @@ class _HomeViewState extends ConsumerState<HomeView> {
 
               // Tab 2: Agenda
               AgendaView(refreshTick: _agendaRefreshTick),
+
+              // Tab 3: Aula USM
+              AulaView(
+                refreshTick: _aulaRefreshTick,
+                selectedSemesterId: activeSemestre?.id,
+                onAcademicDataChanged: () {
+                  ref.read(semestreProvider.notifier).cargarSemestres();
+                  setState(() => _agendaRefreshTick++);
+                },
+              ),
             ],
           ),
           Positioned(
@@ -676,6 +690,7 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
     (icon: Icons.school_rounded, label: 'Ramos'),
     (icon: Icons.calendar_today_rounded, label: 'Horario'),
     (icon: Icons.event_note_rounded, label: 'Agenda'),
+    (icon: Icons.cloud_download_rounded, label: 'Aula'),
   ];
 
   @override
@@ -829,7 +844,7 @@ class _ExpressiveBottomNavigation extends StatelessWidget {
           children: [
             Flexible(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 288),
+                constraints: const BoxConstraints(maxWidth: 348),
                 child: Container(
                   height: barHeight,
                   decoration: BoxDecoration(

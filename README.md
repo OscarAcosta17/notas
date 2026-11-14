@@ -4,9 +4,26 @@ Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes uni
 
 ---
 
-## 📥 Descargar APK (Versiones)
+## 📥 Descargar APK / Instaladores (Versiones)
 
-Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.zip)**.
+Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.exe instalador / .zip portable)**.
+
+### [v1.3.0] - Pestaña Integrada Aula USM, Sinergia Académica e Instalador Windows Auto-Actualizable
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.3.0.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.3.0/NotasApp-v1.3.0.apk) · [NotasApp-Setup-v1.3.0.exe](https://github.com/OscarAcosta17/notas/releases/download/v1.3.0/NotasApp-Setup-v1.3.0.exe) · [NotasApp-Windows-v1.3.0.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.3.0/NotasApp-Windows-v1.3.0.zip)
+
+#### ✨ Novedades y Mejoras:
+* **🏛️ Nueva Pestaña Integrada de Aula USM (Sinergia Total con NotasApp):** Incorpora el ecosistema de `Aula-Scrapt` directamente como cuarta pestaña (`Ramos` ➔ `Horario` ➔ `Agenda` ➔ `Aula`) manteniendo la estética Android 17 / Material 3 Expressive:
+  * **Multi-Acceso Seguro:** WebView USM integrado en Android (`CookieManager` nativo + `moodlemobile://`), autenticación con `Token WebService` / cookie `MoodleSession`, vinculación por **PIN** desde `Aula-Scrapt PC`, y detección/importación automática de `session.json` y `settings.json` locales en Windows.
+  * **Sinergia Directa con Ramos y Agenda:** Empareja cursos de Aula con tus ramos activos (heredando color, estilo visual y promedio), crea ramos faltantes en 1 clic, envía tareas/cuestionarios con fecha límite directo a la **Agenda** (con categoría `Aula USM` al `0%` para no alterar ponderaciones y recordatorios automáticos) y exporta grafos Markdown con `[[wikilinks]]` para Obsidian.
+  * **Descarga Inteligente Multi-Curso:** Organización por curso o sección, detección de descargas previas en disco (`.aula-scrapt-index.json`), filtros por tipo/extensión y barra flotante de descarga en lote.
+* **🪟 Instalador Oficial para Windows (`NotasApp-Setup.exe`) y Auto-Update 100% Automático:**
+  * Instalador nativo con Inno Setup 6 (instalación por usuario en `%LOCALAPPDATA%\Programs\NotasApp`, icono Cristal A+, accesos directos en Menú Inicio y Escritorio).
+  * `UpdaterService` ahora prioriza `.exe` sobre `.zip` en Windows, instala silenciosamente (`/VERYSILENT /CLOSEAPPLICATIONS`) o reemplaza archivos del `.zip` en segundo plano sin bloquear el ejecutable y reinicia `NotasApp` automáticamente.
+* **☁️ Cloud Sync Ampliado:** Respalda y sincroniza también tokens/cookies de Aula, mapeos de carpetas, subcarpetas y vínculos curso–ramo entre Android y PC.
+
+---
 
 ### [v1.2.4] - Google Drive Sync (Estilo Obsidian) y 4 Nuevos Iconos Android 17
 **Fecha**: Noviembre 2026

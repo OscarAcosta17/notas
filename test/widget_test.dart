@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:notas/main.dart';
+import 'package:notas/models/aula_course.dart';
 import 'package:notas/models/categoria_evaluacion.dart';
 import 'package:notas/models/evaluacion.dart';
 import 'package:notas/models/ramo.dart';
 import 'package:notas/models/semestre.dart';
+import 'package:notas/services/aula_service.dart';
 import 'package:notas/services/bug_report_service.dart';
 import 'package:notas/services/cloud_sync_service.dart';
 import 'package:notas/services/updater_service.dart';
@@ -14,8 +16,10 @@ import 'package:notas/viewmodels/categoria_provider.dart';
 import 'package:notas/viewmodels/ramo_provider.dart';
 import 'package:notas/viewmodels/semestre_provider.dart';
 import 'package:notas/viewmodels/settings_provider.dart';
+import 'package:notas/views/aula_view.dart';
 import 'package:notas/views/bug_report_sheet.dart';
 import 'package:notas/views/formula_editor_dialog.dart';
+import 'package:notas/views/home_view.dart';
 import 'package:notas/views/ramo_detail_view.dart';
 import 'package:notas/views/semestre_detail_view.dart';
 import 'package:notas/views/settings/appearance_settings_view.dart';
@@ -827,6 +831,135 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(capturedRef.read(settingsProvider).appIcon, 'icon3');
+    });
+
+    test('Aula USM models normalize academic text, match Ramos accurately, and parse Spanish dates', () {
+      final ramos = [
+        Ramo(
+          id: 1,
+          idSemestre: 1,
+          nombre: 'Arquitectura de Computadores',
+          tipoPromedio: 'Aritmetico',
+          tieneGlobal: false,
+          reemplazaPeorNota: false,
+          notaAprobacion: 55.0,
+        ),
+        Ramo(
+          id: 2,
+          idSemestre: 1,
+          nombre: 'MAT-023 Matemáticas III',
+          tipoPromedio: 'Aritmetico',
+          tieneGlobal: false,
+          reemplazaPeorNota: false,
+          notaAprobacion: 55.0,
+        ),
+      ];
+
+      final c1 = MoodleCourse(
+        id: 101,
+        fullName: 'INF-253 Arquitectura de Computadores - 2026-2',
+        shortName: 'INF-253-2026-2',
+      );
+      final c2 = MoodleCourse(
+        id: 102,
+        fullName: 'Matemáticas III Paralelo 1',
+        shortName: 'MAT023-2026-2',
+      );
+
+      expect(MoodleCourse.findMatchingRamo(c1, ramos)?.id, 1);
+      expect(MoodleCourse.findMatchingRamo(c2, ramos)?.id, 2);
+
+      final due = AulaMoodleService.parseSpanishMoodleDate('lunes, 18 de noviembre de 2026, 23:59');
+      expect(due, DateTime(2026, 11, 18, 23, 59));
+
+      final existingEval = Evaluacion(
+        id: 10,
+        idCategoria: 3,
+        nombre: 'Aula: Tarea 1 MIPS',
+        fecha: due,
+      );
+      final item = MoodleItem(
+        name: 'Tarea 1 MIPS Tarea',
+        type: 'assignment',
+        dueDate: due,
+      );
+      expect(MoodleCourse.findMatchingEvaluacion(item, [existingEval])?.id, 10);
+      expect(MoodleItem.sanitizeFileName('Guía 1: MIPS / ARM?.pdf '), 'Guía 1_ MIPS _ ARM_.pdf');
+    });
+
+    test('AulaSettingsService persists session, folder mappings, and Ramo links', () async {
+      SharedPreferences.setMockInitialValues({});
+      final settings = AulaSettingsService();
+
+      await settings.saveSession(const AulaSessionData(
+        token: 'tok-abc',
+        userName: 'Oscar USM',
+        userId: 42,
+      ));
+      await settings.setCourseFolder(501, 'Arquitectura PC');
+      await settings.setCourseRamoLink(501, 7);
+
+      final loadedSession = await settings.loadSession();
+      final folders = await settings.getCourseFolders();
+      final links = await settings.getCourseRamoLinks();
+
+      expect(loadedSession.hasCredentials, isTrue);
+      expect(loadedSession.userName, 'Oscar USM');
+      expect(loadedSession.userId, 42);
+      expect(folders[501], 'Arquitectura PC');
+      expect(links[501], 7);
+      expect(AulaSettingsService.syncedPrefKeys, contains('aula_course_folders'));
+      expect(AulaSettingsService.syncedPrefKeys, isNot(contains('aula_download_root')));
+    });
+
+    testWidgets('HomeView shows 4 tabs including Aula and opens AulaView cleanly',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({'bottomNavStyle': 'm3_expressive'});
+      final fakeSemestres = [Semestre(id: 1, nombre: '2026-2')];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            semestreProvider.overrideWith(() => _FakeSemestreNotifier(fakeSemestres)),
+            ramoProvider(1).overrideWith(() => _FakeRamoNotifier([])),
+          ],
+          child: const MaterialApp(home: HomeView()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ramos'), findsOneWidget);
+      expect(find.byIcon(Icons.school_rounded), findsWidgets);
+      expect(find.byIcon(Icons.calendar_today_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.event_note_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.cloud_download_rounded), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.cloud_download_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aula'), findsOneWidget);
+      expect(find.text('Aula USM'), findsOneWidget);
+      expect(find.text('Conecta tu Aula USM'), findsOneWidget);
+    });
+
+    testWidgets('AulaView onboarding renders cleanly without overflows on wide desktop size',
+        (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(
+            home: AulaView(autoLoad: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Conecta tu Aula USM'), findsOneWidget);
+      expect(find.text('Sinergia directa con Ramos y Agenda'), findsOneWidget);
     });
   });
 }

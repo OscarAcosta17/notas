@@ -90,6 +90,19 @@ class CloudSyncService {
     'gridCrossAxisCount',
     'tertiaryColor',
     'last_semester_id',
+    'aula_token',
+    'aula_moodle_session',
+    'aula_sesskey',
+    'aula_user_name',
+    'aula_user_id',
+    'aula_course_folders',
+    'aula_course_subfolders',
+    'aula_course_org_sections',
+    'aula_hidden_courses',
+    'aula_course_ramo_links',
+    'aula_notify_new_files',
+    'aula_notify_deadlines',
+    'aula_notify_deadline_hours',
   ];
 
   static Timer? _autoSyncTimer;

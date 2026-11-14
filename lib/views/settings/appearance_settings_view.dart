@@ -511,7 +511,7 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 secondary: TonalIconBadge(icon: Icons.swipe_rounded, color: tokens.accentColor),
                 title: const Text('Deslizar entre secciones', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Cambia entre Ramos, Horario y Agenda deslizando horizontalmente'),
+                subtitle: const Text('Cambia entre Ramos, Horario, Agenda y Aula deslizando horizontalmente'),
                 value: settings.enableHorizontalSwipe,
                 onChanged: (bool value) => notifier.setEnableHorizontalSwipe(value),
               ),
@@ -960,6 +960,7 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
       (Icons.school_rounded, 'Ramos'),
       (Icons.calendar_today_rounded, 'Horario'),
       (Icons.event_note_rounded, 'Agenda'),
+      (Icons.cloud_download_rounded, 'Aula'),
     ];
 
     Widget navRow(double itemHeight) {
@@ -1116,7 +1117,7 @@ class _AppearanceSettingsViewState extends ConsumerState<AppearanceSettingsView>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 204,
+              width: 236,
               height: 46,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
               decoration: BoxDecoration(
