@@ -18,7 +18,6 @@ class HorarioWidgetProvider : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.widget_horario)
             views.setRemoteAdapter(R.id.widget_list, intent)
-            views.setEmptyView(R.id.widget_list, R.id.widget_title)
 
             // Intent para abrir la app
             val appIntent = Intent(context, MainActivity::class.java)

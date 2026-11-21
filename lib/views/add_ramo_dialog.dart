@@ -20,8 +20,6 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
   late final TextEditingController _notaController;
 
   String _tipoPromedio = 'Aritmético';
-  bool _tieneGlobal = false;
-  bool _reemplazaPeorNota = true;
   int? _selectedColor;
 
   @override
@@ -44,14 +42,14 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
 
     if (nombre.isEmpty) return;
     double? nota = double.tryParse(notaStr.replaceAll(',', '.'));
-    if (nota == null || nota < 0) return; // Validación estricta
+    if (nota == null || !nota.isFinite || nota < 0) return;
 
     final ramo = Ramo(
       idSemestre: widget.semestreId,
       nombre: nombre,
       tipoPromedio: _tipoPromedio,
-      tieneGlobal: _tieneGlobal,
-      reemplazaPeorNota: _reemplazaPeorNota,
+      tieneGlobal: false,
+      reemplazaPeorNota: false,
       notaAprobacion: nota,
       color: _selectedColor,
     );
@@ -102,28 +100,7 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Nota Mínima de Aprobación'),
             ),
-            const SizedBox(height: 12),
-            SwitchListTile(
-              title: const Text('¿Tiene Examen Global?', style: TextStyle(fontWeight: FontWeight.w600)),
-              value: _tieneGlobal,
-              contentPadding: EdgeInsets.zero,
-              onChanged: (val) => setState(() => _tieneGlobal = val),
-            ),
-            if (_tieneGlobal)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Regla del Examen Global:', style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSurfaceVariant)),
-                  SwitchListTile(
-                    title: const Text('Reemplaza peor nota (Certamen)'),
-                    subtitle: const Text('Si está apagado, promediará con la nota final.'),
-                    value: _reemplazaPeorNota,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (val) => setState(() => _reemplazaPeorNota = val),
-                  ),
-                ],
-              ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerLow,
@@ -139,34 +116,38 @@ class _AddRamoDialogState extends ConsumerState<AddRamoDialog> {
                 subtitle: const Text('Color para destacar en la lista'),
                 trailing: _selectedColor != null
                     ? IconButton(
+                        tooltip: 'Quitar color',
                         icon: const Icon(Icons.clear_rounded),
                         onPressed: () => setState(() => _selectedColor = null),
                       )
                     : null,
                 onTap: () async {
-                  Color newColor = await showColorPickerDialog(
-                    context,
-                    _selectedColor != null ? Color(_selectedColor!) : Colors.blue,
-                    title: Text('Selecciona el Color', style: Theme.of(context).textTheme.titleLarge),
+                  final picker = ColorPicker(
+                    color: _selectedColor != null ? Color(_selectedColor!) : Colors.blue,
+                    onColorChanged: (c) => _selectedColor = c.toARGB32(),
                     width: 40,
                     height: 40,
-                    spacing: 0,
-                    runSpacing: 0,
-                    borderRadius: 0,
+                    spacing: 4,
+                    runSpacing: 4,
+                    borderRadius: 8,
                     wheelDiameter: 165,
                     enableOpacity: false,
                     showColorCode: true,
                     colorCodeHasColor: true,
-                    pickersEnabled: <ColorPickerType, bool>{
+                    pickersEnabled: const <ColorPickerType, bool>{
                       ColorPickerType.both: false,
-                      ColorPickerType.primary: false,
+                      ColorPickerType.primary: true,
                       ColorPickerType.accent: false,
                       ColorPickerType.bw: false,
                       ColorPickerType.custom: false,
                       ColorPickerType.wheel: true,
                     },
                   );
-                  setState(() => _selectedColor = newColor.toARGB32());
+                  final confirmed = await picker.showPickerDialog(
+                    context,
+                    constraints: const BoxConstraints(minHeight: 400, minWidth: 280, maxWidth: 360),
+                  );
+                  if (confirmed && mounted) setState(() {});
                 },
               ),
             ),

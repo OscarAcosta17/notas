@@ -6,11 +6,62 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class DatabaseHelper {
   static const _databaseName = "NotasDB.db";
-  static const _databaseVersion = 7; // Incremented for visual/math features
+  static const _databaseVersion = 7;
+
+  static const List<String> _requiredTables = [
+    'semesters',
+    'subjects',
+    'categories',
+    'evaluations',
+    'horario_clases',
+  ];
+
+  static const Map<String, Set<String>> _tableColumns = {
+    'semesters': {'id', 'name'},
+    'subjects': {
+      'id',
+      'semester_id',
+      'name',
+      'average_type',
+      'has_global_exam',
+      'global_exam_replaces_worst',
+      'min_passing_grade',
+      'order_index',
+      'color',
+    },
+    'categories': {
+      'id',
+      'subject_id',
+      'name',
+      'total_weight',
+      'min_passing_grade',
+      'average_type',
+      'custom_formula',
+      'drop_lowest',
+    },
+    'evaluations': {
+      'id',
+      'category_id',
+      'name',
+      'specific_weight',
+      'grade',
+      'date',
+    },
+    'horario_clases': {
+      'id',
+      'semester_id',
+      'subject_name',
+      'dia_semana',
+      'bloque',
+      'sala',
+      'paralelo',
+    },
+  };
 
   static bool _ffiInitialized = false;
   static bool _suppressMutationHook = false;
   static VoidCallback? onDatabaseMutated;
+  static String? _testDbPathOverride;
 
   static void ensureInitialized() {
     if (!_ffiInitialized && (Platform.isWindows || Platform.isLinux)) {
@@ -20,20 +71,57 @@ class DatabaseHelper {
     }
   }
 
+  @visibleForTesting
+  static Future<void> setDatabasePathOverrideForTest(String? path) async {
+    await instance.closeForTest();
+    _testDbPathOverride = path;
+  }
+
+  @visibleForTesting
+  Future<void> closeForTest() async {
+    if (_openingFuture != null) {
+      try {
+        await _openingFuture;
+      } catch (_) {}
+    }
+    if (_database != null && _database!.isOpen) {
+      await _database!.close();
+    }
+    _database = null;
+    _openingFuture = null;
+  }
+
+  @visibleForTesting
+  static Future<void> upgradeDatabaseForTest(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) =>
+      instance._onUpgrade(db, oldVersion, newVersion);
+
   // Singleton
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static Database? _database;
+  static Future<Database>? _openingFuture;
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    if (_database != null && _database!.isOpen) return _database!;
+    _openingFuture ??= _initDatabase();
+    try {
+      _database = await _openingFuture!;
+      return _database!;
+    } finally {
+      _openingFuture = null;
+    }
   }
 
   Future<String> getDatabasePath() async {
     ensureInitialized();
+    if (_testDbPathOverride != null) {
+      return _testDbPathOverride!;
+    }
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       final appDir = Directory(join(documentsDirectory.path, 'NotasApp'));
@@ -123,18 +211,27 @@ class DatabaseHelper {
       )
     ''');
   }
-  
+
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 3) {
+      await db.execute('DROP TABLE IF EXISTS horario_clases');
       await db.execute('DROP TABLE IF EXISTS evaluations');
       await db.execute('DROP TABLE IF EXISTS categories');
       await db.execute('DROP TABLE IF EXISTS subjects');
       await db.execute('DROP TABLE IF EXISTS semesters');
       await _onCreate(db, newVersion);
-    } else if (oldVersion == 3) {
-      await db.execute('ALTER TABLE evaluations ADD COLUMN date TEXT');
+      return;
+    }
+
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE evaluations ADD COLUMN date TEXT');
+      } catch (_) {}
+    }
+
+    if (oldVersion < 5) {
       await db.execute('''
-        CREATE TABLE horario_clases (
+        CREATE TABLE IF NOT EXISTS horario_clases (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           semester_id INTEGER NOT NULL,
           subject_name TEXT NOT NULL,
@@ -145,31 +242,33 @@ class DatabaseHelper {
           FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
         )
       ''');
-    } else if (oldVersion == 4) {
-      await db.execute('''
-        CREATE TABLE horario_clases (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          semester_id INTEGER NOT NULL,
-          subject_name TEXT NOT NULL,
-          dia_semana INTEGER NOT NULL,
-          bloque INTEGER NOT NULL,
-          sala TEXT NOT NULL,
-          paralelo TEXT NOT NULL,
-          FOREIGN KEY(semester_id) REFERENCES semesters(id) ON DELETE CASCADE
-        )
-      ''');
-    } else if (oldVersion == 5) {
-      await db.execute('ALTER TABLE subjects ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0');
+    }
+
+    if (oldVersion < 6) {
+      try {
+        await db.execute(
+          'ALTER TABLE subjects ADD COLUMN order_index INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (_) {}
     }
 
     if (oldVersion < 7) {
-      if (oldVersion >= 6) { // If it's jumping from older than 6, we still need to add color but handle properly. We'll just run it safely if it exists by ignoring error or just letting it run since oldVersion < 7.
-        // Wait, version 6 added order_index.
-      }
-      try { await db.execute('ALTER TABLE subjects ADD COLUMN color INTEGER'); } catch (_) {}
-      try { await db.execute('ALTER TABLE categories ADD COLUMN average_type TEXT NOT NULL DEFAULT "Aritmetico"'); } catch (_) {}
-      try { await db.execute('ALTER TABLE categories ADD COLUMN custom_formula TEXT'); } catch (_) {}
-      try { await db.execute('ALTER TABLE categories ADD COLUMN drop_lowest INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE subjects ADD COLUMN color INTEGER');
+      } catch (_) {}
+      try {
+        await db.execute(
+          'ALTER TABLE categories ADD COLUMN average_type TEXT NOT NULL DEFAULT "Aritmetico"',
+        );
+      } catch (_) {}
+      try {
+        await db.execute('ALTER TABLE categories ADD COLUMN custom_formula TEXT');
+      } catch (_) {}
+      try {
+        await db.execute(
+          'ALTER TABLE categories ADD COLUMN drop_lowest INTEGER NOT NULL DEFAULT 0',
+        );
+      } catch (_) {}
     }
   }
 
@@ -201,7 +300,8 @@ class DatabaseHelper {
 
   Future<int> updateSemester(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    final count = await db.update('semesters', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count =
+        await db.update('semesters', row, where: 'id = ?', whereArgs: [row['id']]);
     _notifyMutated();
     return count;
   }
@@ -216,7 +316,12 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> querySubjectsBySemester(int semesterId) async {
     Database db = await instance.database;
-    return await db.query('subjects', where: 'semester_id = ?', whereArgs: [semesterId], orderBy: 'order_index ASC, id ASC');
+    return await db.query(
+      'subjects',
+      where: 'semester_id = ?',
+      whereArgs: [semesterId],
+      orderBy: 'order_index ASC, id ASC',
+    );
   }
 
   Future<int> deleteSubject(int id) async {
@@ -228,9 +333,26 @@ class DatabaseHelper {
 
   Future<int> updateSubject(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    final count = await db.update('subjects', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count =
+        await db.update('subjects', row, where: 'id = ?', whereArgs: [row['id']]);
     _notifyMutated();
     return count;
+  }
+
+  Future<void> updateSubjectOrders(List<({int id, int orderIndex})> orders) async {
+    if (orders.isEmpty) return;
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      for (final entry in orders) {
+        await txn.update(
+          'subjects',
+          {'order_index': entry.orderIndex},
+          where: 'id = ?',
+          whereArgs: [entry.id],
+        );
+      }
+    });
+    _notifyMutated();
   }
 
   // --- CRUD Categories ---
@@ -241,9 +363,63 @@ class DatabaseHelper {
     return id;
   }
 
+  Future<int> insertCategoryWithEvaluations(
+    Map<String, dynamic> categoryRow,
+    List<Map<String, dynamic>> evaluationRows,
+  ) async {
+    final db = await instance.database;
+    final idCategoria = await db.transaction((txn) async {
+      final catId = await txn.insert('categories', categoryRow);
+      for (final evRow in evaluationRows) {
+        final copy = Map<String, dynamic>.from(evRow);
+        copy['category_id'] = catId;
+        await txn.insert('evaluations', copy);
+      }
+      return catId;
+    });
+    _notifyMutated();
+    return idCategoria;
+  }
+
   Future<List<Map<String, dynamic>>> queryCategoriesBySubject(int subjectId) async {
     Database db = await instance.database;
     return await db.query('categories', where: 'subject_id = ?', whereArgs: [subjectId]);
+  }
+
+  Future<List<({Map<String, dynamic> category, List<Map<String, dynamic>> evaluations})>>
+      queryCategoriesWithEvaluationsBySubject(int subjectId) async {
+    final db = await instance.database;
+    final categories = await db.query(
+      'categories',
+      where: 'subject_id = ?',
+      whereArgs: [subjectId],
+      orderBy: 'id ASC',
+    );
+    if (categories.isEmpty) return [];
+
+    final catIds = categories.map((c) => c['id']).whereType<int>().toList();
+    final grouped = <int, List<Map<String, dynamic>>>{};
+    if (catIds.isNotEmpty) {
+      final placeholders = List.filled(catIds.length, '?').join(',');
+      final evRows = await db.rawQuery(
+        'SELECT * FROM evaluations WHERE category_id IN ($placeholders) ORDER BY id ASC',
+        catIds,
+      );
+      for (final ev in evRows) {
+        final cid = ev['category_id'] as int?;
+        if (cid != null) {
+          grouped.putIfAbsent(cid, () => []).add(ev);
+        }
+      }
+    }
+
+    return [
+      for (final cat in categories)
+        (
+          category: cat,
+          evaluations: grouped[cat['id']] ?? const <Map<String, dynamic>>[],
+        ),
+    ];
   }
 
   Future<int> deleteCategory(int id) async {
@@ -255,7 +431,8 @@ class DatabaseHelper {
 
   Future<int> updateCategory(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    final count = await db.update('categories', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count =
+        await db.update('categories', row, where: 'id = ?', whereArgs: [row['id']]);
     _notifyMutated();
     return count;
   }
@@ -273,6 +450,18 @@ class DatabaseHelper {
     return await db.query('evaluations', where: 'category_id = ?', whereArgs: [categoryId]);
   }
 
+  Future<List<Map<String, dynamic>>> queryAllScheduledEvaluationsWithSubject() async {
+    final db = await instance.database;
+    return await db.rawQuery('''
+      SELECT e.*, s.name AS subject_name, c.subject_id AS subject_id
+      FROM evaluations e
+      INNER JOIN categories c ON c.id = e.category_id
+      INNER JOIN subjects s ON s.id = c.subject_id
+      WHERE e.date IS NOT NULL AND e.date != ''
+      ORDER BY e.date ASC
+    ''');
+  }
+
   Future<int> deleteEvaluation(int id) async {
     Database db = await instance.database;
     final count = await db.delete('evaluations', where: 'id = ?', whereArgs: [id]);
@@ -282,7 +471,8 @@ class DatabaseHelper {
 
   Future<int> updateEvaluation(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    final count = await db.update('evaluations', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count =
+        await db.update('evaluations', row, where: 'id = ?', whereArgs: [row['id']]);
     _notifyMutated();
     return count;
   }
@@ -297,7 +487,11 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> queryHorariosBySemester(int semesterId) async {
     Database db = await instance.database;
-    return await db.query('horario_clases', where: 'semester_id = ?', whereArgs: [semesterId]);
+    return await db.query(
+      'horario_clases',
+      where: 'semester_id = ?',
+      whereArgs: [semesterId],
+    );
   }
 
   Future<int> deleteHorario(int id) async {
@@ -309,7 +503,12 @@ class DatabaseHelper {
 
   Future<int> updateHorario(Map<String, dynamic> row) async {
     Database db = await instance.database;
-    final count = await db.update('horario_clases', row, where: 'id = ?', whereArgs: [row['id']]);
+    final count = await db.update(
+      'horario_clases',
+      row,
+      where: 'id = ?',
+      whereArgs: [row['id']],
+    );
     _notifyMutated();
     return count;
   }
@@ -346,9 +545,19 @@ class DatabaseHelper {
 
         Future<void> insertRows(String table, dynamic rawRows) async {
           if (rawRows is! List) return;
+          final allowed = _tableColumns[table]!;
           for (final row in rawRows) {
             if (row is Map) {
-              await txn.insert(table, Map<String, dynamic>.from(row));
+              final filtered = <String, dynamic>{};
+              row.forEach((key, value) {
+                final k = key.toString();
+                if (allowed.contains(k)) {
+                  filtered[k] = value;
+                }
+              });
+              if (filtered.isNotEmpty) {
+                await txn.insert(table, filtered);
+              }
             }
           }
         }
@@ -363,39 +572,122 @@ class DatabaseHelper {
       _suppressMutationHook = false;
     }
   }
+
   Future<String> exportDatabase() async {
     final dbPath = await getDatabasePath();
     final dbFile = File(dbPath);
     if (!await dbFile.exists()) {
       throw Exception("No hay base de datos para exportar.");
     }
-    
-    // Guardar en la carpeta de documentos de la aplicación, simulando Descargas por simplicidad de permisos.
-    // En una app real de Android 11+ se usaría SAF o un directorio público de Descargas, pero requeriría más permisos.
+
     Directory docs = await getApplicationDocumentsDirectory();
     final backupPath = join(docs.path, 'NotasDB_backup.db');
-    
+
     await dbFile.copy(backupPath);
     return backupPath;
   }
 
+  static Future<bool> _hasValidSqliteHeader(File file) async {
+    if (!await file.exists()) return false;
+    final len = await file.length();
+    if (len < 16) return false;
+    final raf = await file.open();
+    try {
+      final header = await raf.read(16);
+      const magic = [
+        0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
+        0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
+      ];
+      if (header.length < 16) return false;
+      for (var i = 0; i < 16; i++) {
+        if (header[i] != magic[i]) return false;
+      }
+      return true;
+    } finally {
+      await raf.close();
+    }
+  }
+
   Future<void> importDatabase(String sourcePath) async {
     final backupFile = File(sourcePath);
-    
+
     if (!await backupFile.exists()) {
       throw Exception("No se encontró el archivo seleccionado.");
     }
-    
-    // Cerrar BD actual
-    if (_database != null && _database!.isOpen) {
-      await _database!.close();
-      _database = null;
+    if (!await _hasValidSqliteHeader(backupFile)) {
+      throw Exception("El archivo seleccionado no es una base de datos SQLite válida.");
     }
-    
+
     final dbPath = await getDatabasePath();
-    await backupFile.copy(dbPath);
-    
-    // Reabrir
-    await database; 
+    final currentFile = File(dbPath);
+    final rollbackFile = File('$dbPath.bak');
+
+    await closeForTest();
+
+    if (await currentFile.exists()) {
+      await currentFile.copy(rollbackFile.path);
+    }
+
+    for (final suffix in const ['-wal', '-shm', '-journal']) {
+      final sidecar = File('$dbPath$suffix');
+      if (await sidecar.exists()) {
+        await sidecar.delete();
+      }
+    }
+
+    try {
+      await backupFile.copy(dbPath);
+      final rawInspect = await databaseFactory.openDatabase(dbPath);
+      Set<String> preUpgradeTables;
+      try {
+        final rawRows = await rawInspect.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        );
+        preUpgradeTables = rawRows
+            .map((r) => r['name']?.toString() ?? '')
+            .toSet();
+      } finally {
+        await rawInspect.close();
+      }
+      for (final coreTable in const [
+        'semesters',
+        'subjects',
+        'categories',
+        'evaluations',
+      ]) {
+        if (!preUpgradeTables.contains(coreTable)) {
+          throw Exception(
+            'La base de datos importada no contiene la tabla requerida "$coreTable".',
+          );
+        }
+      }
+
+      final reopened = await database;
+      final tablesRows = await reopened.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      );
+      final existingTables = tablesRows
+          .map((r) => r['name']?.toString() ?? '')
+          .toSet();
+      for (final req in _requiredTables) {
+        if (!existingTables.contains(req)) {
+          throw Exception(
+            'La base de datos importada no contiene la tabla requerida "$req".',
+          );
+        }
+      }
+      if (await rollbackFile.exists()) {
+        await rollbackFile.delete();
+      }
+      _notifyMutated();
+    } catch (e) {
+      await closeForTest();
+      if (await rollbackFile.exists()) {
+        await rollbackFile.copy(dbPath);
+        await rollbackFile.delete();
+        await database;
+      }
+      rethrow;
+    }
   }
 }

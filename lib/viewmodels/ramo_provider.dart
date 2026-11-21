@@ -21,6 +21,7 @@ class RamoNotifier extends Notifier<List<Ramo>> {
   Future<void> cargarRamos() async {
     try {
       final data = await DatabaseHelper.instance.querySubjectsBySemester(arg);
+      if (!ref.mounted) return;
       state = data.map((e) => Ramo.fromMap(e)).toList();
     } catch (e) {
       debugPrint("Error al cargar ramos: $e");
@@ -54,23 +55,40 @@ class RamoNotifier extends Notifier<List<Ramo>> {
     }
   }
 
-  Future<void> reordenarRamos(int oldIndex, int newIndex) async {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
+  Future<void> reordenarRamos(
+    int oldIndex,
+    int newIndex, {
+    bool adjustNewIndex = true,
+  }) async {
+    if (oldIndex < 0 || oldIndex >= state.length) return;
+    var targetIndex = newIndex;
+    if (adjustNewIndex && oldIndex < targetIndex) {
+      targetIndex -= 1;
     }
+    if (targetIndex < 0 ||
+        targetIndex >= state.length ||
+        oldIndex == targetIndex) {
+      return;
+    }
+
     final ramos = List<Ramo>.from(state);
     final item = ramos.removeAt(oldIndex);
-    ramos.insert(newIndex, item);
-    
+    ramos.insert(targetIndex, item);
+
+    for (var i = 0; i < ramos.length; i++) {
+      ramos[i] = ramos[i].copyWith(orderIndex: i);
+    }
+
     // Update state optimistically
     state = ramos;
-    
-    // Update database
+
+    // Persist atomically via SQLite batch
     try {
-      for (int i = 0; i < ramos.length; i++) {
-        ramos[i].orderIndex = i;
-        await DatabaseHelper.instance.updateSubject(ramos[i].toMap());
-      }
+      final orders = <({int id, int orderIndex})>[
+        for (var i = 0; i < ramos.length; i++)
+          if (ramos[i].id != null) (id: ramos[i].id!, orderIndex: i),
+      ];
+      await DatabaseHelper.instance.updateSubjectOrders(orders);
     } catch (e) {
       debugPrint("Error al reordenar ramos: $e");
     }

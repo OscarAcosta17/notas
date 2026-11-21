@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
+import 'app_cache_service.dart';
 import 'notification_service.dart';
 
 class ReleaseUpdateInfo {
@@ -17,6 +19,7 @@ class ReleaseUpdateInfo {
   final String downloadUrl;
   final String releaseNotes;
   final int? apkSizeBytes;
+  final String? expectedSha256;
 
   const ReleaseUpdateInfo({
     required this.currentVersion,
@@ -24,6 +27,7 @@ class ReleaseUpdateInfo {
     required this.downloadUrl,
     required this.releaseNotes,
     this.apkSizeBytes,
+    this.expectedSha256,
   });
 }
 
@@ -43,6 +47,34 @@ class UpdaterService {
   @visibleForTesting
   static void resetStartupCheck() {
     _startupCheckDone = false;
+  }
+
+  /// Validates that an OTA asset download URL uses HTTPS on trusted GitHub hosts.
+  static bool isTrustedDownloadUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.scheme.toLowerCase() != 'https') return false;
+    final host = uri.host.toLowerCase();
+    return host == 'github.com' ||
+        host.endsWith('.github.com') ||
+        host == 'githubusercontent.com' ||
+        host.endsWith('.githubusercontent.com');
+  }
+
+  static String? parseSha256ForAsset(String sumsBody, String assetFileName) {
+    final targetLower = assetFileName.toLowerCase();
+    for (final rawLine in sumsBody.split('\n')) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      final match = RegExp(r'^([a-fA-F0-9]{64})\s+[* ]?(.+)$').firstMatch(line);
+      if (match != null) {
+        final hash = match.group(1)!.toLowerCase();
+        final file = p.basename(match.group(2)!.trim()).toLowerCase();
+        if (file == targetLower) {
+          return hash;
+        }
+      }
+    }
+    return null;
   }
 
   static String _sanitizeNotes(String? rawBody) {
@@ -87,35 +119,67 @@ class UpdaterService {
       final cleanLatest = latestTag.split('+').first.split('-').first;
 
       if (cleanLatest != currentVersion && _isNewer(currentVersion, cleanLatest)) {
+        if (!Platform.isAndroid && !Platform.isWindows) {
+          return const _UpdateCheckResult(
+            message: 'Las actualizaciones automáticas están disponibles solo para Android y Windows.',
+          );
+        }
+
         final assets = (data['assets'] as List<dynamic>? ?? const []);
         final isWindows = Platform.isWindows;
         String? downloadUrl;
+        String? selectedAssetName;
         int? apkSize;
+        String? checksumsUrl;
+
         for (final rawAsset in assets) {
           if (rawAsset is Map<String, dynamic>) {
-            final name = (rawAsset['name'] ?? '').toString().toLowerCase();
+            final originalName = (rawAsset['name'] ?? '').toString();
+            final name = originalName.toLowerCase();
+            if (name == 'sha256sums.txt') {
+              checksumsUrl = rawAsset['browser_download_url']?.toString();
+              continue;
+            }
             if (isWindows) {
               if (name.endsWith('.exe')) {
                 downloadUrl = rawAsset['browser_download_url']?.toString();
+                selectedAssetName = originalName;
                 final sizeVal = rawAsset['size'];
                 apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
-                break;
-              }
-              if (name.endsWith('.zip') && downloadUrl == null) {
+              } else if (name.endsWith('.zip') && downloadUrl == null) {
                 downloadUrl = rawAsset['browser_download_url']?.toString();
+                selectedAssetName = originalName;
                 final sizeVal = rawAsset['size'];
                 apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
               }
-            } else if (name.endsWith('.apk')) {
+            } else if (name.endsWith('.apk') && downloadUrl == null) {
               downloadUrl = rawAsset['browser_download_url']?.toString();
+              selectedAssetName = originalName;
               final sizeVal = rawAsset['size'];
               apkSize = sizeVal is int ? sizeVal : (sizeVal is num ? sizeVal.toInt() : null);
-              break;
             }
           }
         }
 
-        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+        if (downloadUrl != null &&
+            downloadUrl.isNotEmpty &&
+            isTrustedDownloadUrl(downloadUrl)) {
+          String? expectedSha256;
+          if (checksumsUrl != null &&
+              selectedAssetName != null &&
+              isTrustedDownloadUrl(checksumsUrl)) {
+            try {
+              final sumRes = await client
+                  .get(Uri.parse(checksumsUrl))
+                  .timeout(const Duration(seconds: 10));
+              if (sumRes.statusCode == 200) {
+                expectedSha256 = parseSha256ForAsset(sumRes.body, selectedAssetName);
+              }
+            } catch (_) {
+              // Optional on releases published before SHA256SUMS.txt existed.
+            }
+          }
+
           return _UpdateCheckResult(
             info: ReleaseUpdateInfo(
               currentVersion: currentVersion,
@@ -123,14 +187,15 @@ class UpdaterService {
               downloadUrl: downloadUrl,
               releaseNotes: _sanitizeNotes(data['body']?.toString()),
               apkSizeBytes: apkSize,
+              expectedSha256: expectedSha256,
             ),
           );
         }
 
         return _UpdateCheckResult(
           message: isWindows
-              ? 'Nueva versión detectada, pero aún no hay paquete de Windows adjunto en GitHub.'
-              : 'Nueva versión detectada, pero no hay APK adjunto en GitHub.',
+              ? 'Nueva versión detectada, pero aún no hay paquete válido de Windows adjunto en GitHub.'
+              : 'Nueva versión detectada, pero no hay APK válido adjunto en GitHub.',
         );
       }
 
@@ -295,13 +360,13 @@ class _UpdateScreenState extends State<UpdateScreen> {
   }
 
   Future<(File partFile, File finalFile)> _resolveApkFiles() async {
-    final dir = await getTemporaryDirectory();
+    final dir = await AppCacheService.getCacheDirectory();
     final safeVersion = widget.info.latestVersion.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final lowerUrl = widget.info.downloadUrl.toLowerCase();
     final ext = Platform.isWindows ? (lowerUrl.contains('.exe') ? 'exe' : 'zip') : 'apk';
     return (
-      File('${dir.path}/update_v$safeVersion.$ext.part'),
-      File('${dir.path}/update_v$safeVersion.$ext'),
+      File(p.join(dir.path, 'update_v$safeVersion.$ext.part')),
+      File(p.join(dir.path, 'update_v$safeVersion.$ext')),
     );
   }
 
@@ -353,8 +418,16 @@ class _UpdateScreenState extends State<UpdateScreen> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  Future<void> _startOrResumeDownload() async {
+  Future<void> _startOrResumeDownload({bool isRetry = false}) async {
     if (_isDownloading) return;
+
+    if (!UpdaterService.isTrustedDownloadUrl(widget.info.downloadUrl)) {
+      setState(() {
+        _hasError = true;
+        _status = 'URL de descarga no confiable.';
+      });
+      return;
+    }
 
     AppHaptics.light(context);
     final currentSession = ++_sessionId;
@@ -388,7 +461,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
           _downloadedBytes = existingBytes;
           _totalBytes = existingBytes;
           _progress = 1.0;
-          _status = 'Descarga completada. Abriendo instalador...';
+          _status = 'Descarga completada. Verificando integridad...';
         });
         await _installApk();
         return;
@@ -412,12 +485,15 @@ class _UpdateScreenState extends State<UpdateScreen> {
         if (await partFile.exists()) await partFile.delete();
         client.close();
         _client = null;
+        if (isRetry) {
+          throw const HttpException('HTTP 416');
+        }
         setState(() {
           _downloadedBytes = 0;
           _progress = 0.0;
           _isDownloading = false;
         });
-        await _startOrResumeDownload();
+        await _startOrResumeDownload(isRetry: true);
         return;
       }
 
@@ -442,12 +518,15 @@ class _UpdateScreenState extends State<UpdateScreen> {
         _status = isResumed ? 'Descarga reanudada...' : 'Descargando actualización...';
       });
 
+      var lastUiTick = DateTime.fromMillisecondsSinceEpoch(0);
       _subscription = response.stream.listen(
         (List<int> chunk) {
           if (currentSession != _sessionId) return;
           sink.add(chunk);
           _downloadedBytes += chunk.length;
-          if (mounted) {
+          final now = DateTime.now();
+          if (mounted && now.difference(lastUiTick).inMilliseconds >= 100) {
+            lastUiTick = now;
             setState(() {
               if (_totalBytes > 0) {
                 _progress = (_downloadedBytes / _totalBytes).clamp(0.0, 1.0);
@@ -474,7 +553,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
               _isPaused = false;
               _isCompleted = true;
               _progress = 1.0;
-              _status = 'Descarga completada. Abriendo instalador...';
+              _status = 'Descarga completada. Verificando integridad...';
             });
             await _installApk();
           } catch (e) {
@@ -584,6 +663,25 @@ class _UpdateScreenState extends State<UpdateScreen> {
           _status = 'El archivo APK no se encuentra en caché. Descárgalo nuevamente.';
         });
         return;
+      }
+
+      final expectedSha = widget.info.expectedSha256;
+      if (expectedSha != null && expectedSha.isNotEmpty) {
+        final digest = await sha256.bind(finalFile.openRead()).first;
+        final actualSha = digest.toString().toLowerCase();
+        if (actualSha != expectedSha.toLowerCase()) {
+          await finalFile.delete();
+          if (!mounted) return;
+          setState(() {
+            _isCompleted = false;
+            _downloadedBytes = 0;
+            _progress = 0.0;
+            _hasError = true;
+            _status =
+                'Verificación SHA-256 fallida: el archivo descargado está corrupto o alterado. Descárgalo nuevamente.';
+          });
+          return;
+        }
       }
 
       if (Platform.isAndroid) {
@@ -883,16 +981,19 @@ class _UpdateScreenState extends State<UpdateScreen> {
   String _psQuote(String value) => value.replaceAll("'", "''");
 
   Future<void> _installWindowsUpdate(File packageFile) async {
+    if (!await packageFile.exists()) {
+      throw const FileSystemException('Paquete de actualización no encontrado.');
+    }
     final currentExePath = Platform.resolvedExecutable;
     final appDir = File(currentExePath).parent.path;
     final packagePath = packageFile.path;
     final isExeInstaller = packagePath.toLowerCase().endsWith('.exe');
-    final tempDir = await getTemporaryDirectory();
-    final psFile = File('${tempDir.path}${Platform.pathSeparator}notas_auto_update.ps1');
-    final extractDir = '${tempDir.path}${Platform.pathSeparator}notas_update_extract';
+    final tempDir = await AppCacheService.getCacheDirectory();
+    final psFile = File(p.join(tempDir.path, 'notas_auto_update_$pid.ps1'));
+    final extractDir = p.join(tempDir.path, 'notas_update_extract_$pid');
 
     final psScript = '''
-\$ErrorActionPreference = 'SilentlyContinue'
+\$ErrorActionPreference = 'Stop'
 \$currentPid = $pid
 Wait-Process -Id \$currentPid -Timeout 12 -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500

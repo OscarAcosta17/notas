@@ -5,6 +5,7 @@ import android.content.Intent
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import es.antonborri.home_widget.HomeWidgetPlugin
+import org.json.JSONArray
 
 class AgendaWidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
@@ -17,20 +18,47 @@ class AgendaRemoteViewsFactory(
     private val intent: Intent
 ) : RemoteViewsService.RemoteViewsFactory {
 
-    private var evalList: List<String> = emptyList()
+    private data class AgendaWidgetRow(val title: String, val subtitle: String)
+
+    private var evalList: List<AgendaWidgetRow> = emptyList()
 
     override fun onCreate() {
-        // Inicializar datos si es necesario
     }
 
     override fun onDataSetChanged() {
-        // This is called when we call notifyAppWidgetViewDataChanged
         val widgetData = HomeWidgetPlugin.getData(context)
-        val rawString = widgetData.getString("evaluations_list", "")
-        if (rawString != null && rawString.isNotEmpty()) {
-            evalList = rawString.split("|||") // usaremos "|||" como separador de items
-        } else {
+        val rawString = widgetData.getString("evaluations_list", "") ?: ""
+        if (rawString.isBlank()) {
             evalList = emptyList()
+            return
+        }
+        val trimmed = rawString.trim()
+        if (trimmed.startsWith("[")) {
+            try {
+                val arr = JSONArray(trimmed)
+                val parsed = ArrayList<AgendaWidgetRow>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    parsed.add(
+                        AgendaWidgetRow(
+                            title = obj.optString("title", ""),
+                            subtitle = obj.optString("subtitle", ""),
+                        )
+                    )
+                }
+                evalList = parsed
+                return
+            } catch (_: Exception) {
+                evalList = emptyList()
+                return
+            }
+        }
+        evalList = rawString.split("|||").map { entry ->
+            val parts = entry.split("###")
+            AgendaWidgetRow(
+                title = parts.getOrElse(0) { "" },
+                subtitle = parts.getOrElse(1) { "" },
+            )
         }
     }
 
@@ -43,27 +71,21 @@ class AgendaRemoteViewsFactory(
     }
 
     override fun getViewAt(position: Int): RemoteViews {
-        if (evalList.isEmpty()) {
-            val rv = RemoteViews(context.packageName, R.layout.widget_agenda_item)
+        val rv = RemoteViews(context.packageName, R.layout.widget_agenda_item)
+        if (evalList.isEmpty() || position < 0 || position >= evalList.size) {
             rv.setTextViewText(R.id.item_title, "Ningún evento próximo")
             rv.setTextViewText(R.id.item_subtitle, "")
             return rv
         }
 
-        val itemText = evalList[position]
-        val parts = itemText.split("###") // "Title###Subtitle"
-        val title = if (parts.isNotEmpty()) parts[0] else ""
-        val subtitle = if (parts.size > 1) parts[1] else ""
+        val item = evalList[position]
+        rv.setTextViewText(R.id.item_title, item.title)
+        rv.setTextViewText(R.id.item_subtitle, item.subtitle)
 
-        val rv = RemoteViews(context.packageName, R.layout.widget_agenda_item)
-        rv.setTextViewText(R.id.item_title, title)
-        rv.setTextViewText(R.id.item_subtitle, subtitle)
-        
-        // Setup fill-in intent for clicking
         val fillInIntent = Intent()
         fillInIntent.putExtra("EXTRA_ITEM", position)
         rv.setOnClickFillInIntent(R.id.widget_item_container, fillInIntent)
-        
+
         return rv
     }
 

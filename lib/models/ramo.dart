@@ -1,4 +1,4 @@
-import 'dart:math';
+import 'dart:math' as math;
 import 'categoria_evaluacion.dart';
 
 class Ramo {
@@ -7,7 +7,7 @@ class Ramo {
   String nombre;
   String tipoPromedio; // 'Aritmetico' or 'Geometrico'
   bool tieneGlobal;
-  bool reemplazaPeorNota; 
+  bool reemplazaPeorNota;
   double notaAprobacion;
   int orderIndex;
   int? color;
@@ -26,6 +26,33 @@ class Ramo {
     this.categorias = const [],
   });
 
+  Ramo copyWith({
+    int? id,
+    int? idSemestre,
+    String? nombre,
+    String? tipoPromedio,
+    bool? tieneGlobal,
+    bool? reemplazaPeorNota,
+    double? notaAprobacion,
+    int? orderIndex,
+    int? color,
+    bool clearColor = false,
+    List<CategoriaEvaluacion>? categorias,
+  }) {
+    return Ramo(
+      id: id ?? this.id,
+      idSemestre: idSemestre ?? this.idSemestre,
+      nombre: nombre ?? this.nombre,
+      tipoPromedio: tipoPromedio ?? this.tipoPromedio,
+      tieneGlobal: tieneGlobal ?? this.tieneGlobal,
+      reemplazaPeorNota: reemplazaPeorNota ?? this.reemplazaPeorNota,
+      notaAprobacion: notaAprobacion ?? this.notaAprobacion,
+      orderIndex: orderIndex ?? this.orderIndex,
+      color: clearColor ? null : (color ?? this.color),
+      categorias: categorias ?? this.categorias,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -41,87 +68,64 @@ class Ramo {
   }
 
   factory Ramo.fromMap(Map<String, dynamic> map) {
+    final globalRaw = map['has_global_exam'];
+    final replaceRaw = map['global_exam_replaces_worst'];
     return Ramo(
-      id: map['id'],
-      idSemestre: map['semester_id'],
-      nombre: map['name'],
-      tipoPromedio: map['average_type'] ?? 'Aritmetico',
-      tieneGlobal: map['has_global_exam'] == 1,
-      reemplazaPeorNota: map['global_exam_replaces_worst'] == 1,
-      notaAprobacion: (map['min_passing_grade'] ?? 4.0).toDouble(),
-      orderIndex: map['order_index'] ?? 0,
-      color: map['color'],
+      id: (map['id'] as num?)?.toInt(),
+      idSemestre: (map['semester_id'] as num?)?.toInt() ?? 0,
+      nombre: (map['name'] ?? '').toString(),
+      tipoPromedio: (map['average_type'] ?? 'Aritmetico').toString(),
+      tieneGlobal: globalRaw == 1 || globalRaw == true,
+      reemplazaPeorNota: replaceRaw == 1 || replaceRaw == true,
+      notaAprobacion: map['min_passing_grade'] is num
+          ? (map['min_passing_grade'] as num).toDouble()
+          : (double.tryParse(map['min_passing_grade']?.toString() ?? '') ?? 4.0),
+      orderIndex: (map['order_index'] as num?)?.toInt() ?? 0,
+      color: (map['color'] as num?)?.toInt(),
     );
   }
 
-  // --- LÓGICA MATEMÁTICA ---
-  
   double calcularNotaActual() {
     if (categorias.isEmpty) return 0.0;
 
-    double notaPonderada = 0.0;
-    double sumaPesos = 0.0;
+    final isArithmetic =
+        tipoPromedio == 'Aritmetico' || tipoPromedio == 'Aritmético';
 
-    if (tipoPromedio == 'Aritmetico' || tipoPromedio == 'Aritmético') {
-      for (var cat in categorias) {
-        double? promCat = cat.calcularPromedio();
-        if (promCat != null) {
+    if (isArithmetic) {
+      double notaPonderada = 0.0;
+      double sumaPesos = 0.0;
+      for (final cat in categorias) {
+        final promCat = cat.calcularPromedio();
+        if (promCat != null && cat.porcentajeTotal > 0) {
           notaPonderada += promCat * (cat.porcentajeTotal / 100.0);
           sumaPesos += cat.porcentajeTotal;
         }
       }
-      if (sumaPesos == 0) return 0.0;
-      notaPonderada = (notaPonderada / (sumaPesos / 100.0)); // Normalize to 100% of graded categories
+      if (sumaPesos <= 0) return 0.0;
+      final normalized = notaPonderada / (sumaPesos / 100.0);
+      if (!normalized.isFinite) return 0.0;
+      return double.parse(normalized.toStringAsFixed(2));
     } else {
-      // Geométrico
-      double producto = 1.0;
-      for (var cat in categorias) {
-        double? promCat = cat.calcularPromedio();
-        if (promCat != null && promCat > 0) {
-          producto *= pow(promCat, cat.porcentajeTotal / 100.0);
-          sumaPesos += cat.porcentajeTotal;
+      // Geométrico: a 0.0 in any graded weighted category yields 0.0 instead of inflating the mean.
+      double sumWeightedLog = 0.0;
+      double sumaPesos = 0.0;
+      bool hasZero = false;
+      for (final cat in categorias) {
+        final promCat = cat.calcularPromedio();
+        if (promCat == null || cat.porcentajeTotal <= 0) continue;
+        if (promCat < 0) return 0.0;
+        sumaPesos += cat.porcentajeTotal;
+        if (promCat == 0.0) {
+          hasZero = true;
+        } else {
+          sumWeightedLog += (cat.porcentajeTotal / 100.0) * math.log(promCat);
         }
       }
-      if (sumaPesos == 0) return 0.0;
-      notaPonderada = pow(producto, 1 / (sumaPesos / 100.0)).toDouble();
-    }
-
-    return double.parse(notaPonderada.toStringAsFixed(2));
-  }
-
-  double calcularNotaNecesaria() {
-    // Cálculo simplificado: si falta nota en una categoría, 
-    // asumimos que el peso faltante se necesita para llegar a notaAprobacion.
-    
-    double notaAcumulada = 0.0;
-    double pesoPendienteTotal = 0.0;
-
-    for (var cat in categorias) {
-      double? promCat = cat.calcularPromedio();
-      if (promCat != null) {
-        notaAcumulada += promCat * (cat.porcentajeTotal / 100.0);
-      } else {
-        pesoPendienteTotal += cat.porcentajeTotal;
-      }
-    }
-
-    if (pesoPendienteTotal == 0.0) return 0.0; // Ya se evaluó todo
-
-    if (tipoPromedio == 'Aritmetico' || tipoPromedio == 'Aritmético') {
-      double requerida = (notaAprobacion - notaAcumulada) / (pesoPendienteTotal / 100.0);
-      return requerida > 0 ? double.parse(requerida.toStringAsFixed(2)) : 0.0;
-    } else {
-      // Geometrico
-      double productoAcumulado = 1.0;
-      for (var cat in categorias) {
-        double? promCat = cat.calcularPromedio();
-        if (promCat != null && promCat > 0) {
-          productoAcumulado *= pow(promCat, cat.porcentajeTotal / 100.0);
-        }
-      }
-      if (productoAcumulado == 0.0) return 0.0;
-      double requerida = pow((notaAprobacion / productoAcumulado), 1 / (pesoPendienteTotal / 100.0)).toDouble();
-      return requerida > 0 ? double.parse(requerida.toStringAsFixed(2)) : 0.0;
+      if (sumaPesos <= 0) return 0.0;
+      if (hasZero) return 0.0;
+      final normalized = math.exp(sumWeightedLog / (sumaPesos / 100.0));
+      if (!normalized.isFinite) return 0.0;
+      return double.parse(normalized.toStringAsFixed(2));
     }
   }
 }

@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../services/app_cache_service.dart';
 import '../../services/cloud_sync_service.dart';
 import '../../services/database_helper.dart';
 import '../../theme/app_theme.dart';
@@ -85,15 +85,7 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
 
   Future<void> _calculateCacheSize() async {
     try {
-      final dir = await getTemporaryDirectory();
-      int totalSize = 0;
-      if (dir.existsSync()) {
-        dir.listSync(recursive: true, followLinks: false).forEach((FileSystemEntity entity) {
-          if (entity is File) {
-            totalSize += entity.lengthSync();
-          }
-        });
-      }
+      final totalSize = await AppCacheService.calculateCacheSizeBytes();
 
       if (mounted) {
         setState(() {
@@ -115,14 +107,7 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
 
   Future<void> _clearCache() async {
     try {
-      final dir = await getTemporaryDirectory();
-      if (dir.existsSync()) {
-        dir.listSync(recursive: true, followLinks: false).forEach((FileSystemEntity entity) {
-          if (entity is File) {
-            entity.deleteSync();
-          }
-        });
-      }
+      await AppCacheService.clearAppCache();
       await _calculateCacheSize();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -729,7 +714,7 @@ class _DataSettingsViewState extends ConsumerState<DataSettingsView> {
         return;
       }
 
-      final dir = await getTemporaryDirectory();
+      final dir = await AppCacheService.getCacheDirectory();
       final tempFile = File(p.join(dir.path, CloudSyncService.bundleFileName));
       await tempFile.writeAsBytes(bytes);
       await Share.shareXFiles(

@@ -45,21 +45,30 @@ class NotasApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
+    final themeCfg = ref.watch(settingsProvider.select((s) => (
+      isDarkMode: s.isDarkMode,
+      useDynamicColor: s.useDynamicColor,
+      frostedGlassIntensity: s.frostedGlassIntensity,
+      tertiaryColor: s.tertiaryColor,
+      surfaceStyle: s.surfaceStyle,
+      cardRadiusStyle: s.cardRadiusStyle,
+      subjectColorStyle: s.subjectColorStyle,
+      hapticsEnabled: s.hapticsEnabled,
+    )));
 
     return DynamicColorBuilder(
       builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
         ThemeData themeFor(Brightness brightness, ColorScheme? dynamicScheme) {
           return AppTheme.buildTheme(
             brightness: brightness,
-            useDynamicColor: settings.useDynamicColor,
-            frostedGlassIntensity: settings.frostedGlassIntensity,
-            tertiaryColorValue: settings.tertiaryColor,
+            useDynamicColor: themeCfg.useDynamicColor,
+            frostedGlassIntensity: themeCfg.frostedGlassIntensity,
+            tertiaryColorValue: themeCfg.tertiaryColor,
             dynamicScheme: dynamicScheme,
-            surfaceStyle: settings.surfaceStyle,
-            cardRadiusStyle: settings.cardRadiusStyle,
-            subjectColorStyle: settings.subjectColorStyle,
-            hapticsEnabled: settings.hapticsEnabled,
+            surfaceStyle: themeCfg.surfaceStyle,
+            cardRadiusStyle: themeCfg.cardRadiusStyle,
+            subjectColorStyle: themeCfg.subjectColorStyle,
+            hapticsEnabled: themeCfg.hapticsEnabled,
           );
         }
 
@@ -67,7 +76,7 @@ class NotasApp extends ConsumerWidget {
           title: 'NotasApp - Gestión Universitaria',
           debugShowCheckedModeBanner: false,
           scrollBehavior: const _DesktopTouchScrollBehavior(),
-          themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          themeMode: themeCfg.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           theme: themeFor(Brightness.light, lightDynamic),
           darkTheme: themeFor(Brightness.dark, darkDynamic),
           builder: (context, child) {

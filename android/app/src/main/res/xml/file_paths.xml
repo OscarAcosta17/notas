@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <cache-path name="apk_updates" path="updates/" />
-    <external-cache-path name="ext_apk_updates" path="updates/" />
+    <cache-path name="notas_cache" path="NotasApp_cache/" />
+    <external-cache-path name="ext_notas_cache" path="NotasApp_cache/" />
     <external-path name="external_files" path="." />
-    <files-path name="internal_files" path="." />
 </paths>

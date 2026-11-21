@@ -38,28 +38,17 @@ class _AgendaViewState extends State<AgendaView> {
 
   Future<void> _loadAgenda() async {
     final db = DatabaseHelper.instance;
-    List<Map<String, dynamic>> upcoming = [];
+    final List<Map<String, dynamic>> upcoming = [];
 
     try {
-      final subjects = await db.database.then((db) => db.query('subjects'));
-      for (var sub in subjects) {
-        final subjectId = sub['id'] as int;
-        final subjectName = sub['name'] as String;
-
-        final cats = await db.queryCategoriesBySubject(subjectId);
-        for (var cat in cats) {
-          final catId = cat['id'] as int;
-
-          final evs = await db.queryEvaluationsByCategory(catId);
-          for (var ev in evs) {
-            final eval = Evaluacion.fromMap(ev);
-            if (eval.fecha != null) {
-              upcoming.add({
-                'eval': eval,
-                'subjectName': subjectName,
-              });
-            }
-          }
+      final rows = await db.queryAllScheduledEvaluationsWithSubject();
+      for (final row in rows) {
+        final eval = Evaluacion.fromMap(row);
+        if (eval.fecha != null) {
+          upcoming.add({
+            'eval': eval,
+            'subjectName': (row['subject_name'] ?? '').toString(),
+          });
         }
       }
 
@@ -148,10 +137,13 @@ class _AgendaViewState extends State<AgendaView> {
                     ),
                     onTap: () async {
                       Navigator.pop(sheetContext);
-                      eval.fecha = null; // Removing date removes it from agenda, keeping the evaluation itself
-                      await DatabaseHelper.instance.updateEvaluation(eval.toMap());
-                      await NotificationService.cancelEvaluationReminder(eval.id!);
+                      final updatedEval = eval.copyWith(clearFecha: true);
+                      await DatabaseHelper.instance.updateEvaluation(updatedEval.toMap());
+                      if (updatedEval.id != null) {
+                        await NotificationService.cancelEvaluationReminder(updatedEval.id!);
+                      }
                       WidgetService.updateAgendaWidget();
+                      if (!mounted) return;
                       _loadAgenda();
                     },
                   ),
@@ -165,113 +157,15 @@ class _AgendaViewState extends State<AgendaView> {
   }
 
   void _showEditDialog(Evaluacion eval, String subjectName) {
-    final nameCtrl = TextEditingController(text: eval.nombre);
-    DateTime? selectedDate = eval.fecha;
-    TimeOfDay? selectedTime = eval.fecha != null ? TimeOfDay.fromDateTime(eval.fecha!) : null;
-
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateSB) {
-            return AlertDialog(
-              title: const Text('Editar Evaluación'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Nombre'),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.calendar_today_rounded, size: 18),
-                          label: Text(
-                            selectedDate != null
-                                ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}'
-                                : 'Fecha',
-                          ),
-                          onPressed: () async {
-                            final d = await showDatePicker(
-                              context: context,
-                              initialDate: selectedDate ?? DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (d != null) {
-                              setStateSB(() {
-                                selectedDate = DateTime(
-                                  d.year,
-                                  d.month,
-                                  d.day,
-                                  selectedTime?.hour ?? 0,
-                                  selectedTime?.minute ?? 0,
-                                );
-                              });
-                            }
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.access_time_rounded, size: 18),
-                          label: Text(selectedTime != null ? selectedTime!.format(context) : 'Hora'),
-                          onPressed: () async {
-                            final t = await showTimePicker(
-                              context: context,
-                              initialTime: selectedTime ?? TimeOfDay.now(),
-                            );
-                            if (t != null) {
-                              setStateSB(() {
-                                selectedTime = t;
-                                if (selectedDate != null) {
-                                  selectedDate = DateTime(
-                                    selectedDate!.year,
-                                    selectedDate!.month,
-                                    selectedDate!.day,
-                                    t.hour,
-                                    t.minute,
-                                  );
-                                }
-                              });
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-                FilledButton(
-                  onPressed: () async {
-                    if (nameCtrl.text.isNotEmpty) {
-                      eval.nombre = nameCtrl.text;
-                      eval.fecha = selectedDate;
-                      await DatabaseHelper.instance.updateEvaluation(eval.toMap());
-
-                      await NotificationService.cancelEvaluationReminder(eval.id!);
-                      if (eval.fecha != null) {
-                        await NotificationService.scheduleEvaluationReminder(eval, subjectName);
-                      }
-
-                      WidgetService.updateAgendaWidget();
-                      _loadAgenda();
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => _AgendaEditDialog(
+        eval: eval,
+        subjectName: subjectName,
+        onSaved: () {
+          if (mounted) _loadAgenda();
+        },
+      ),
     );
   }
 
@@ -579,6 +473,166 @@ class _AgendaViewState extends State<AgendaView> {
         ],
       ),
       body: content,
+    );
+  }
+}
+
+class _AgendaEditDialog extends StatefulWidget {
+  final Evaluacion eval;
+  final String subjectName;
+  final VoidCallback onSaved;
+
+  const _AgendaEditDialog({
+    required this.eval,
+    required this.subjectName,
+    required this.onSaved,
+  });
+
+  @override
+  State<_AgendaEditDialog> createState() => _AgendaEditDialogState();
+}
+
+class _AgendaEditDialogState extends State<_AgendaEditDialog> {
+  late final TextEditingController _nameCtrl;
+  DateTime? _selectedDate;
+  TimeOfDay? _selectedTime;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.eval.nombre);
+    _selectedDate = widget.eval.fecha;
+    _selectedTime = widget.eval.fecha != null
+        ? TimeOfDay.fromDateTime(widget.eval.fecha!)
+        : null;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (!mounted || d == null) return;
+    setState(() {
+      _selectedDate = DateTime(
+        d.year,
+        d.month,
+        d.day,
+        _selectedTime?.hour ?? 0,
+        _selectedTime?.minute ?? 0,
+      );
+    });
+  }
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? TimeOfDay.now(),
+    );
+    if (!mounted || t == null) return;
+    setState(() {
+      _selectedTime = t;
+      if (_selectedDate != null) {
+        _selectedDate = DateTime(
+          _selectedDate!.year,
+          _selectedDate!.month,
+          _selectedDate!.day,
+          t.hour,
+          t.minute,
+        );
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final trimmedName = _nameCtrl.text.trim();
+    if (trimmedName.isEmpty || _isSaving) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final updatedEval = widget.eval.copyWith(
+        nombre: trimmedName,
+        fecha: _selectedDate,
+        clearFecha: _selectedDate == null,
+      );
+      await DatabaseHelper.instance.updateEvaluation(updatedEval.toMap());
+      if (updatedEval.id != null) {
+        await NotificationService.cancelEvaluationReminder(updatedEval.id!);
+      }
+      if (updatedEval.fecha != null) {
+        await NotificationService.scheduleEvaluationReminder(
+          updatedEval,
+          widget.subjectName,
+        );
+      }
+
+      WidgetService.updateAgendaWidget();
+      widget.onSaved();
+      if (!mounted) return;
+      Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar Evaluación'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameCtrl,
+            decoration: const InputDecoration(labelText: 'Nombre'),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today_rounded, size: 18),
+                  label: Text(
+                    _selectedDate != null
+                        ? '${_selectedDate!.day}/${_selectedDate!.month}/${_selectedDate!.year}'
+                        : 'Fecha',
+                  ),
+                  onPressed: _isSaving ? null : _pickDate,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.access_time_rounded, size: 18),
+                  label: Text(
+                    _selectedTime != null ? _selectedTime!.format(context) : 'Hora',
+                  ),
+                  onPressed: _isSaving ? null : _pickTime,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ? null : _save,
+          child: const Text('Guardar'),
+        ),
+      ],
     );
   }
 }

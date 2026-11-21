@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
-import 'dart:io';
 
 import '../models/aula_course.dart';
 import 'aula_settings_service.dart';
@@ -32,6 +33,32 @@ class DownloadedFileData {
   });
 }
 
+class StreamedFileDownload {
+  final String fileName;
+  final String fileExt;
+  final int sizeBytes;
+  final String sha256Hex;
+
+  const StreamedFileDownload({
+    required this.fileName,
+    required this.fileExt,
+    required this.sizeBytes,
+    required this.sha256Hex,
+  });
+}
+
+class _DigestSink implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) {
+    value = data;
+  }
+
+  @override
+  void close() {}
+}
+
 class MoodleService {
   static const String baseUrl = 'https://aula.usm.cl';
   static const String userAgent =
@@ -53,6 +80,53 @@ class MoodleService {
     if (session != null) {
       applySession(session);
     }
+  }
+
+  void dispose() {
+    _client.close();
+  }
+
+  static bool isTrustedAulaUri(Uri? uri) {
+    if (uri == null || uri.scheme.toLowerCase() != 'https') return false;
+    final host = uri.host.toLowerCase();
+    return host == 'aula.usm.cl' || host.endsWith('.aula.usm.cl');
+  }
+
+  static String stripSensitiveQueryParams(String rawUrl) {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null || uri.queryParametersAll.isEmpty) return rawUrl;
+    const sensitive = {'token', 'wstoken', 'sesskey'};
+    var changed = false;
+    final cleaned = <String, List<String>>{};
+    uri.queryParametersAll.forEach((k, v) {
+      if (sensitive.contains(k.toLowerCase())) {
+        changed = true;
+      } else {
+        cleaned[k] = v;
+      }
+    });
+    if (!changed) return rawUrl;
+    return Uri(
+      scheme: uri.scheme,
+      userInfo: uri.userInfo,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+      queryParameters: cleaned.isEmpty ? null : cleaned,
+      fragment: uri.hasFragment ? uri.fragment : null,
+    ).toString();
+  }
+
+  static String _tryDecodeComponent(String raw) {
+    try {
+      return Uri.decodeComponent(raw);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  static String _shortHash(String input) {
+    return sha256.convert(utf8.encode(input)).toString().substring(0, 16);
   }
 
   bool get isAuthenticated => token.isNotEmpty || cookie.isNotEmpty;
@@ -91,10 +165,11 @@ class MoodleService {
     userName = '';
     userId = '';
     await _settings.clearSession();
+    await _settings.clearWebViewCookies();
   }
 
   String _normalizeCookie(String raw) {
-    var clean = raw.trim();
+    var clean = raw.replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ').trim();
     if (clean.toLowerCase().startsWith('cookie:')) {
       clean = clean.substring(7).trim();
     }
@@ -104,14 +179,21 @@ class MoodleService {
     return clean;
   }
 
-  Map<String, String> _cookieHeaders([Map<String, String>? extra]) {
+  Map<String, String> _cookieHeaders([
+    Map<String, String>? extra,
+    String? cookieOverride,
+    Uri? targetUri,
+  ]) {
+    final effectiveCookie = cookieOverride ?? cookie;
+    final canSendCookie = effectiveCookie.isNotEmpty &&
+        (targetUri == null || isTrustedAulaUri(targetUri));
     final headers = <String, String>{
       'User-Agent': userAgent,
       'Accept':
           'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     };
-    if (cookie.isNotEmpty) {
-      headers['Cookie'] = cookie;
+    if (canSendCookie) {
+      headers['Cookie'] = effectiveCookie;
     }
     if (extra != null) {
       headers.addAll(extra);
@@ -119,7 +201,71 @@ class MoodleService {
     return headers;
   }
 
-  /// Follows HTTP redirects manually while preserving Moodle cookies and updating Set-Cookie values.
+  Future<({http.StreamedResponse response, Uri finalUri, String updatedCookie})>
+      _sendFollowingRedirects(
+    String url, {
+    String method = 'GET',
+    Map<String, String>? extraHeaders,
+    String? cookieOverride,
+    bool persistCookies = true,
+    int maxRedirects = 8,
+    Duration requestTimeout = const Duration(seconds: 25),
+  }) async {
+    var currentUrl = url;
+    var activeCookie = cookieOverride ?? cookie;
+
+    for (var hop = 0; hop <= maxRedirects; hop++) {
+      final uri = Uri.tryParse(currentUrl);
+      if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+        throw Exception('URL inválida o esquema no soportado.');
+      }
+      final trusted = isTrustedAulaUri(uri);
+      final req = http.Request(method, uri)..followRedirects = false;
+      req.headers.addAll({
+        'User-Agent': userAgent,
+        'Accept': '*/*',
+        if (trusted && activeCookie.isNotEmpty) 'Cookie': activeCookie,
+        ...?extraHeaders,
+      });
+
+      final streamed = await _client.send(req).timeout(requestTimeout);
+      final headers = streamed.headers;
+
+      final setCookie = headers['set-cookie'];
+      if (trusted && setCookie != null && setCookie.isNotEmpty) {
+        activeCookie = _mergeCookieString(activeCookie, setCookie);
+        if (persistCookies) {
+          cookie = activeCookie;
+        }
+      }
+
+      if (streamed.statusCode >= 300 &&
+          streamed.statusCode < 400 &&
+          headers['location'] != null) {
+        try {
+          await streamed.stream
+              .drain<void>()
+              .timeout(const Duration(seconds: 4));
+        } catch (_) {}
+        final nextUri = uri.resolve(headers['location']!);
+        if (nextUri.scheme != 'http' && nextUri.scheme != 'https') {
+          throw Exception('Redirección hacia esquema no permitido.');
+        }
+        currentUrl = nextUri.toString();
+        continue;
+      }
+
+      return (
+        response: streamed,
+        finalUri: uri,
+        updatedCookie: activeCookie,
+      );
+    }
+
+    throw Exception('Demasiadas redirecciones al acceder a Aula USM.');
+  }
+
+  /// Follows HTTP redirects manually while preserving Moodle cookies only on trusted Aula hosts.
   Future<
       ({
         int statusCode,
@@ -129,78 +275,59 @@ class MoodleService {
       })> _getFollowingRedirects(
     String url, {
     Map<String, String>? extraHeaders,
+    String? cookieOverride,
+    bool persistCookies = true,
     int maxRedirects = 8,
   }) async {
-    var currentUrl = url;
-    var activeCookie = cookie;
-
-    for (var hop = 0; hop <= maxRedirects; hop++) {
-      final uri = Uri.parse(currentUrl);
-      final req = http.Request('GET', uri)..followRedirects = false;
-      req.headers.addAll({
-        'User-Agent': userAgent,
-        'Accept': '*/*',
-        if (activeCookie.isNotEmpty) 'Cookie': activeCookie,
-        ...?extraHeaders,
-      });
-
-      final streamed =
-          await _client.send(req).timeout(const Duration(seconds: 25));
-      final bodyBytes = await streamed.stream.toBytes();
-      final headers = streamed.headers;
-
-      final setCookie = headers['set-cookie'];
-      if (setCookie != null && setCookie.isNotEmpty) {
-        activeCookie = _mergeCookieString(activeCookie, setCookie);
-        if (uri.host.endsWith('aula.usm.cl')) {
-          cookie = activeCookie;
-        }
-      }
-
-      if (streamed.statusCode >= 300 &&
-          streamed.statusCode < 400 &&
-          headers['location'] != null) {
-        final next = uri.resolve(headers['location']!).toString();
-        currentUrl = next;
-        continue;
-      }
-
-      return (
-        statusCode: streamed.statusCode,
-        headers: headers,
-        bodyBytes: bodyBytes,
-        finalUrl: currentUrl,
-      );
-    }
-
-    throw Exception('Demasiadas redirecciones al acceder a Aula USM.');
+    final result = await _sendFollowingRedirects(
+      url,
+      method: 'GET',
+      extraHeaders: extraHeaders,
+      cookieOverride: cookieOverride,
+      persistCookies: persistCookies,
+      maxRedirects: maxRedirects,
+    );
+    final bodyBytes = await result.response.stream
+        .toBytes()
+        .timeout(const Duration(seconds: 60));
+    return (
+      statusCode: result.response.statusCode,
+      headers: result.response.headers,
+      bodyBytes: bodyBytes,
+      finalUrl: result.finalUri.toString(),
+    );
   }
 
   String _mergeCookieString(String existing, String setCookieHeader) {
+    final cleanExisting = existing.replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ');
+    final cleanHeader =
+        setCookieHeader.replaceAll(RegExp(r'[\x00-\x1F\x7F]+'), ' ');
     final jar = <String, String>{};
-    for (final part in existing.split(';')) {
+    for (final part in cleanExisting.split(';')) {
       final eq = part.indexOf('=');
       if (eq > 0) {
-        jar[part.substring(0, eq).trim()] = part.substring(eq + 1).trim();
+        final k = part.substring(0, eq).trim();
+        final v = part.substring(eq + 1).trim();
+        if (k.isNotEmpty) jar[k] = v;
       }
     }
-    // Extract key=val from Set-Cookie segments
-    final regex = RegExp(r'(?:^|,)\s*([^=;\s]+)=([^;]*)');
-    for (final m in regex.allMatches(setCookieHeader)) {
+    const cookieAttrs = {
+      'path',
+      'domain',
+      'expires',
+      'max-age',
+      'samesite',
+      'priority',
+      'secure',
+      'httponly',
+    };
+    final validCookieName = RegExp(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$");
+    final regex = RegExp(r'(?:^|[;,])\s*([^=;\s,]+)=([^;]*)');
+    for (final m in regex.allMatches(cleanHeader)) {
       final k = m.group(1)?.trim() ?? '';
       final v = m.group(2)?.trim() ?? '';
-      if (k.isEmpty) continue;
-      final lower = k.toLowerCase();
-      if (const {
-        'path',
-        'domain',
-        'expires',
-        'max-age',
-        'samesite',
-        'priority',
-      }.contains(lower)) {
-        continue;
-      }
+      if (k.isEmpty || !validCookieName.hasMatch(k)) continue;
+      if (cookieAttrs.contains(k.toLowerCase())) continue;
       jar[k] = v;
     }
     return jar.entries.map((e) => '${e.key}=${e.value}').join('; ');
@@ -208,15 +335,18 @@ class MoodleService {
 
   static bool isAuthenticatedMoodleHtml(String html) {
     final lower = html.toLowerCase();
-    if (lower.contains('name="logintoken"') ||
+    final isLoginForm = lower.contains('name="logintoken"') ||
         lower.contains('login.microsoftonline.com') ||
-        lower.contains('action="https://aula.usm.cl/login/index.php"')) {
-      if (!lower.contains('login/logout.php')) return false;
+        lower.contains('/login/index.php"') ||
+        (lower.contains('name="username"') && lower.contains('name="password"'));
+    if (isLoginForm && !lower.contains('login/logout.php')) {
+      return false;
     }
-    return lower.contains('login/logout.php') ||
-        lower.contains('"sesskey"') ||
-        lower.contains('m.cfg') ||
-        lower.contains('usermenu');
+    if (lower.contains('login/logout.php')) return true;
+    if (RegExp(r'data-userid="([1-9]\d*)"').hasMatch(lower)) return true;
+    if (RegExp(r'"userId"\s*:\s*[1-9]\d*').hasMatch(html)) return true;
+    if (lower.contains('/user/profile.php?id=')) return true;
+    return false;
   }
 
   void extractSessionDetails(String html) {
@@ -239,8 +369,7 @@ class MoodleService {
       final doc = html_parser.parse(html);
       final nameEl = doc.querySelector('.usertext') ??
           doc.querySelector('.usermenu .userbutton .usertext') ??
-          doc.querySelector('[data-region="usermenu"] .userinitials') ??
-          doc.querySelector('.page-header-headings h1');
+          doc.querySelector('[data-region="usermenu"] .usertext');
       final candidate = nameEl?.text.trim() ?? '';
       if (candidate.isNotEmpty &&
           candidate.length < 80 &&
@@ -289,22 +418,21 @@ class MoodleService {
     if (cleanToken.isEmpty) {
       throw Exception('Ingresa un Token de WebService válido.');
     }
+    final info = await _callWs(
+      'core_webservice_get_site_info',
+      {},
+      tokenOverride: cleanToken,
+    );
+    if (info is! Map || info['userid'] == null) {
+      throw Exception('El token de Aula USM no es válido o expiró.');
+    }
     token = cleanToken;
     cookie = '';
-    try {
-      final info = await _callWs('core_webservice_get_site_info', {});
-      if (info is! Map || info['userid'] == null) {
-        token = '';
-        throw Exception('El token de Aula USM no es válido o expiró.');
-      }
-      userName = (info['fullname'] ?? 'Estudiante USM').toString();
-      userId = info['userid'].toString();
-      await saveSession();
-      return session;
-    } catch (e) {
-      token = '';
-      rethrow;
-    }
+    sesskey = '';
+    userName = (info['fullname'] ?? 'Estudiante USM').toString();
+    userId = info['userid'].toString();
+    await saveSession();
+    return session;
   }
 
   Future<AulaSessionData> loginWithCookie(String rawCookie) async {
@@ -312,27 +440,30 @@ class MoodleService {
     if (normalized.isEmpty) {
       throw Exception('Ingresa una cookie de sesión válida.');
     }
-    cookie = normalized;
-    token = '';
-    try {
-      final res = await _getFollowingRedirects('$baseUrl/my/');
-      final html = utf8.decode(res.bodyBytes, allowMalformed: true);
-      if (res.statusCode != 200 || !isAuthenticatedMoodleHtml(html)) {
-        cookie = '';
-        throw SessionExpiredException(
-          'La cookie ingresada expiró o no corresponde a una sesión activa en Aula USM.',
-        );
-      }
-      extractSessionDetails(html);
-      if (userName.isEmpty) {
-        userName = 'Estudiante USM';
-      }
-      await saveSession();
-      return session;
-    } catch (e) {
-      cookie = '';
-      rethrow;
+    final res = await _getFollowingRedirects(
+      '$baseUrl/my/',
+      cookieOverride: normalized,
+      persistCookies: false,
+    );
+    final html = utf8.decode(res.bodyBytes, allowMalformed: true);
+    if (res.statusCode != 200 || !isAuthenticatedMoodleHtml(html)) {
+      throw SessionExpiredException(
+        'La cookie ingresada expiró o no corresponde a una sesión activa en Aula USM.',
+      );
     }
+    cookie = _mergeCookieString(
+      normalized,
+      res.headers['set-cookie'] ?? '',
+    );
+    token = '';
+    sesskey = '';
+    userId = '';
+    extractSessionDetails(html);
+    if (userName.isEmpty) {
+      userName = 'Estudiante USM';
+    }
+    await saveSession();
+    return session;
   }
 
   Future<({AulaSessionData session, Map<int, String> folders})>
@@ -344,9 +475,16 @@ class MoodleService {
     if (!cleanBase.startsWith('http://') && !cleanBase.startsWith('https://')) {
       cleanBase = 'http://$cleanBase';
     }
+    final parsedBase = Uri.tryParse(cleanBase);
+    if (parsedBase == null ||
+        (parsedBase.scheme != 'http' && parsedBase.scheme != 'https') ||
+        parsedBase.host.isEmpty) {
+      throw Exception('URL de servidor de emparejamiento inválida.');
+    }
     final cleanPin = pin.trim().toUpperCase();
-    final uri = Uri.parse(
-      '$cleanBase/api/pair/claim?pin=${Uri.encodeQueryComponent(cleanPin)}',
+    final uri = parsedBase.replace(
+      path: '${parsedBase.path}/api/pair/claim',
+      queryParameters: {'pin': cleanPin},
     );
     final resp = await _client.get(uri).timeout(const Duration(seconds: 12));
     if (resp.statusCode != 200) {
@@ -379,22 +517,31 @@ class MoodleService {
       throw Exception('El PC no envió credenciales de Aula válidas.');
     }
 
-    applySession(AulaSessionData(
-      token: pairedToken,
-      cookie: pairedCookie,
-      sesskey: pairedSesskey,
-      userName: pairedUser,
-      userId: int.tryParse(pairedUid),
-    ));
-    await saveSession();
+    // Verify paired credentials live against Aula USM before mutating local state.
+    if (pairedToken.isNotEmpty) {
+      await loginWithToken(pairedToken);
+    } else {
+      await loginWithCookie(pairedCookie);
+      if (pairedSesskey.isNotEmpty && sesskey.isEmpty) {
+        sesskey = pairedSesskey;
+      }
+      if (pairedUser.isNotEmpty && userName == 'Estudiante USM') {
+        userName = pairedUser;
+      }
+      if (pairedUid.isNotEmpty && userId.isEmpty) {
+        userId = pairedUid;
+      }
+      await saveSession();
+    }
 
     final folders = <int, String>{};
     final rawFolders = map['course_folders'] ?? map['courseFolders'];
     if (rawFolders is Map) {
       rawFolders.forEach((k, v) {
         final cid = int.tryParse(k.toString());
-        if (cid != null && v != null && v.toString().trim().isNotEmpty) {
-          folders[cid] = v.toString().trim();
+        final rawFolder = v?.toString().trim() ?? '';
+        if (cid != null && rawFolder.isNotEmpty) {
+          folders[cid] = MoodleCourse.sanitizeFileName(rawFolder);
         }
       });
     }
@@ -409,29 +556,42 @@ class MoodleService {
 
   Future<dynamic> _callWs(
     String wsfunction,
-    Map<String, String> params,
-  ) async {
-    final uri = Uri.parse('$baseUrl/webservice/rest/server.php').replace(
-      queryParameters: {
-        'wstoken': token,
-        'wsfunction': wsfunction,
-        'moodlewsrestformat': 'json',
-        ...params,
-      },
-    );
-    final res = await _client.get(uri).timeout(const Duration(seconds: 25));
+    Map<String, String> params, {
+    String? tokenOverride,
+  }) async {
+    final activeToken = tokenOverride ?? token;
+    final uri = Uri.parse('$baseUrl/webservice/rest/server.php');
+    final res = await _client
+        .post(
+          uri,
+          headers: {
+            'User-Agent': userAgent,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: {
+            'wstoken': activeToken,
+            'wsfunction': wsfunction,
+            'moodlewsrestformat': 'json',
+            ...params,
+          },
+        )
+        .timeout(const Duration(seconds: 25));
     if (res.statusCode != 200) {
       throw Exception('Error Aula WebService (${res.statusCode})');
     }
     final decoded = jsonDecode(utf8.decode(res.bodyBytes));
     if (decoded is Map && decoded['exception'] != null) {
-      final errCode = decoded['errorcode']?.toString() ?? '';
-      if (errCode == 'invalidtoken' || errCode == 'accessexception') {
-        throw SessionExpiredException(
-          decoded['message']?.toString() ?? 'Token inválido o expirado.',
-        );
+      final errCode = decoded['errorcode']?.toString().toLowerCase() ?? '';
+      final msg = decoded['message']?.toString() ?? 'Error en Aula';
+      if (errCode == 'invalidtoken' ||
+          errCode == 'expiredtoken' ||
+          msg.toLowerCase().contains('invalid token')) {
+        throw SessionExpiredException(msg);
       }
-      throw Exception(decoded['message']?.toString() ?? 'Error en Aula');
+      if (errCode == 'accessexception') {
+        throw Exception('Sin permisos para este recurso en Aula USM ($msg)');
+      }
+      throw Exception(msg);
     }
     return decoded;
   }
@@ -441,7 +601,10 @@ class MoodleService {
 
     if (isTokenAuth) {
       if (userId.isEmpty) {
-        await verifySessionLive();
+        final ok = await verifySessionLive();
+        if (!ok || userId.isEmpty) {
+          throw SessionExpiredException();
+        }
       }
       final rawList = await _callWs('core_enrol_get_users_courses', {
         'userid': userId,
@@ -467,6 +630,9 @@ class MoodleService {
 
     // Cookie auth: parse both /my/courses.php and /my/ + AJAX timeline
     final byId = <int, MoodleCourse>{};
+    var anyPageSucceeded = false;
+    Object? lastNetworkError;
+
     for (final path in ['/my/courses.php', '/my/']) {
       try {
         final res = await _getFollowingRedirects('$baseUrl$path');
@@ -475,13 +641,15 @@ class MoodleService {
           if (path == '/my/courses.php') continue;
           throw SessionExpiredException();
         }
+        anyPageSucceeded = true;
         extractSessionDetails(html);
         final doc = html_parser.parse(html);
         for (final a in doc.querySelectorAll('a[href*="course/view.php?id="]')) {
           final href = a.attributes['href'] ?? '';
-          final idMatch = RegExp(r'id=(\d+)').firstMatch(href);
-          if (idMatch == null) continue;
-          final cid = int.tryParse(idMatch.group(1)!) ?? 0;
+          final cidStr = Uri.tryParse(href)?.queryParameters['id'] ?? '';
+          final cid = int.tryParse(cidStr) ??
+              int.tryParse(RegExp(r'id=(\d+)').firstMatch(href)?.group(1) ?? '') ??
+              0;
           if (cid <= 1) continue;
           final rawText = _cleanMoodleTitle(a.text);
           if (rawText.isEmpty ||
@@ -501,16 +669,26 @@ class MoodleService {
         }
       } catch (e) {
         if (e is SessionExpiredException) rethrow;
+        lastNetworkError = e;
       }
+    }
+
+    if (!anyPageSucceeded && lastNetworkError != null) {
+      throw lastNetworkError;
     }
 
     // Also try Moodle AJAX enrolled courses endpoint if sesskey is known
     if (sesskey.isNotEmpty) {
       try {
+        final ajaxUri = Uri.parse('$baseUrl/lib/ajax/service.php');
         final ajaxRes = await _client
             .post(
-              Uri.parse('$baseUrl/lib/ajax/service.php?sesskey=$sesskey'),
-              headers: _cookieHeaders({'Content-Type': 'application/json'}),
+              ajaxUri.replace(queryParameters: {'sesskey': sesskey}),
+              headers: _cookieHeaders(
+                {'Content-Type': 'application/json'},
+                null,
+                ajaxUri,
+              ),
               body: jsonEncode([
                 {
                   'index': 0,
@@ -587,15 +765,16 @@ class MoodleService {
           final modName = mod['modname']?.toString() ?? 'resource';
           final modTitle =
               _cleanMoodleTitle(mod['name']?.toString() ?? 'Recurso');
-          final modUrl = mod['url']?.toString() ?? '';
+          final modUrl = stripSensitiveQueryParams(mod['url']?.toString() ?? '');
           final contents = mod['contents'] as List? ?? const [];
 
           if (modName == 'folder') {
             var idx = 0;
             for (final c in contents) {
               if (c is! Map) continue;
-              final fileUrl = c['fileurl']?.toString() ?? '';
-              if (fileUrl.isEmpty) continue;
+              final rawFileUrl = c['fileurl']?.toString() ?? '';
+              if (rawFileUrl.isEmpty) continue;
+              final fileUrl = stripSensitiveQueryParams(rawFileUrl);
               final fname = c['filename']?.toString() ?? 'archivo';
               final ext = inferFileExt(fname, fileUrl);
               final size = (c['filesize'] as num?)?.toInt();
@@ -606,7 +785,7 @@ class MoodleService {
                 title: fname,
                 section: '$effectiveSection / $modTitle',
                 type: 'resource',
-                url: _appendToken(fileUrl),
+                url: fileUrl,
                 fileName: fname,
                 fileExt: ext,
                 downloadable: true,
@@ -632,7 +811,9 @@ class MoodleService {
 
           if (modName == 'url') {
             final extUrl = contents.isNotEmpty && contents[0] is Map
-                ? (contents[0]['fileurl']?.toString() ?? modUrl)
+                ? stripSensitiveQueryParams(
+                    contents[0]['fileurl']?.toString() ?? modUrl,
+                  )
                 : modUrl;
             items.add(MoodleItem(
               id: '${course.id}_$modId',
@@ -650,8 +831,9 @@ class MoodleService {
             var idx = 0;
             for (final c in contents) {
               if (c is! Map) continue;
-              final fUrl = c['fileurl']?.toString() ?? '';
-              if (fUrl.isEmpty) continue;
+              final rawFUrl = c['fileurl']?.toString() ?? '';
+              if (rawFUrl.isEmpty) continue;
+              final fUrl = stripSensitiveQueryParams(rawFUrl);
               final fname = c['filename']?.toString() ?? '$modTitle.pdf';
               final ext = inferFileExt(fname, fUrl);
               final size = (c['filesize'] as num?)?.toInt();
@@ -663,7 +845,7 @@ class MoodleService {
                 title: itemTitle,
                 section: effectiveSection,
                 type: 'resource',
-                url: _appendToken(fUrl),
+                url: fUrl,
                 fileName: fname,
                 fileExt: ext,
                 downloadable: true,
@@ -692,9 +874,10 @@ class MoodleService {
           for (var cIdx = 0; cIdx < contents.length; cIdx++) {
             final c = contents[cIdx];
             if (c is! Map) continue;
-            final fUrl = c['fileurl']?.toString() ?? '';
-            if (fUrl.isEmpty || seenUrls.contains(fUrl)) continue;
-            seenUrls.add(fUrl);
+            final rawFUrl = c['fileurl']?.toString() ?? '';
+            if (rawFUrl.isEmpty) continue;
+            final fUrl = stripSensitiveQueryParams(rawFUrl);
+            if (!seenUrls.add(fUrl)) continue;
             final fname = c['filename']?.toString() ?? '';
             items.add(MoodleItem(
               id: '${course.id}_${modId}_emb_$cIdx',
@@ -702,7 +885,7 @@ class MoodleService {
               title: fname.isNotEmpty ? '$modTitle — $fname' : modTitle,
               section: effectiveSection,
               type: 'resource',
-              url: _appendToken(fUrl),
+              url: fUrl,
               fileName: fname,
               fileExt: inferFileExt(fname, fUrl),
               downloadable: true,
@@ -806,6 +989,7 @@ class MoodleService {
     }
     extractSessionDetails(mainHtml);
     final mainDoc = html_parser.parse(mainHtml);
+    final mainUri = Uri.tryParse(mainUrl);
 
     // Collect additional tabbed/single-section pages (onetopic, tiles, flexible format)
     final sectionUrls = <String>{};
@@ -817,10 +1001,14 @@ class MoodleService {
       'a[href*="sectionid="]',
     )) {
       final href = a.attributes['href'] ?? '';
-      if (href.contains('id=${course.id}') &&
-          (href.contains('section=') || href.contains('sectionid='))) {
-        final resolved = Uri.parse(mainUrl).resolve(href).toString().split('#').first;
-        sectionUrls.add(resolved);
+      if (href.isEmpty) continue;
+      final resolvedUri = mainUri?.resolve(href);
+      if (resolvedUri == null || !isTrustedAulaUri(resolvedUri)) continue;
+      final cidParam = resolvedUri.queryParameters['id'];
+      final hasSectionParam = resolvedUri.queryParameters.containsKey('section') ||
+          resolvedUri.queryParameters.containsKey('sectionid');
+      if (cidParam == '${course.id}' && hasSectionParam) {
+        sectionUrls.add(resolvedUri.removeFragment().toString());
       }
     }
 
@@ -842,25 +1030,35 @@ class MoodleService {
 
     absorbDoc(mainDoc);
 
-    // Crawl section tabs with bounded concurrency (4)
+    // Crawl section tabs with bounded concurrency (4), parsing sequentially to avoid races
     final tabList = sectionUrls.toList();
     for (var i = 0; i < tabList.length; i += 4) {
       final batch = tabList.sublist(
         i,
         i + 4 > tabList.length ? tabList.length : i + 4,
       );
-      await Future.wait(batch.map((secUrl) async {
+      final tabDocs = await Future.wait(batch.map((secUrl) async {
         try {
           final r = await _getFollowingRedirects(secUrl);
           final h = utf8.decode(r.bodyBytes, allowMalformed: true);
-          if (r.statusCode == 200 && isAuthenticatedMoodleHtml(h)) {
-            absorbDoc(html_parser.parse(h));
+          if (!isAuthenticatedMoodleHtml(h)) {
+            throw SessionExpiredException();
           }
-        } catch (_) {}
+          return r.statusCode == 200 ? html_parser.parse(h) : null;
+        } on SessionExpiredException {
+          rethrow;
+        } catch (_) {
+          return null;
+        }
       }));
+      for (final doc in tabDocs) {
+        if (doc != null) {
+          absorbDoc(doc);
+        }
+      }
     }
 
-    // Flatten Moodle /mod/folder/ resources concurrently (max 4)
+    // Flatten Moodle /mod/folder/ resources concurrently (max 4), deduplicating sequentially
     final finalItems = <MoodleItem>[...parsedItems];
     for (var i = 0; i < folderItems.length; i += 4) {
       final batch = folderItems.sublist(
@@ -868,10 +1066,14 @@ class MoodleService {
         i + 4 > folderItems.length ? folderItems.length : i + 4,
       );
       final expandedLists = await Future.wait(
-        batch.map((folderItem) => _extractFolderFiles(folderItem, seenUrls)),
+        batch.map((folderItem) => _extractFolderFiles(folderItem)),
       );
       for (final expanded in expandedLists) {
-        finalItems.addAll(expanded);
+        for (final entry in expanded) {
+          if (entry.url.isEmpty || seenUrls.add(entry.url) || entry.type == 'folder') {
+            finalItems.add(entry);
+          }
+        }
       }
     }
 
@@ -895,6 +1097,7 @@ class MoodleService {
   ) {
     final items = <MoodleItem>[];
     final folders = <MoodleItem>[];
+    final baseUri = Uri.tryParse(baseUrl);
 
     // Check active tab name fallback (Onetopic)
     final activeTabName = _cleanMoodleTitle(
@@ -953,17 +1156,20 @@ class MoodleService {
 
         if (mainLink != null) {
           final href = mainLink.attributes['href'] ?? '';
-          if (href.isNotEmpty) {
+          final resolvedUri = href.isNotEmpty ? baseUri?.resolve(href) : null;
+          if (resolvedUri != null) {
             if (modNum.isEmpty) {
-              final linkIdMatch = RegExp(r'id=(\d+)').firstMatch(href);
-              if (linkIdMatch != null) modNum = linkIdMatch.group(1)!;
+              modNum = resolvedUri.queryParameters['id'] ??
+                  RegExp(r'id=(\d+)').firstMatch(href)?.group(1) ??
+                  '';
             }
             if (modType == 'resource') {
               final modMatch = RegExp(r'/mod/([a-z0-9_]+)/').firstMatch(href);
               if (modMatch != null) modType = modMatch.group(1)!;
             }
 
-            final modKey = '${courseId}_${modNum.isNotEmpty ? modNum : href.hashCode}';
+            final modKey =
+                '${courseId}_${modNum.isNotEmpty ? modNum : _shortHash(href)}';
             if (!seenModIds.add(modKey)) continue;
 
             // Clean title ignoring .accesshide
@@ -978,7 +1184,7 @@ class MoodleService {
             );
             if (title.isEmpty) title = 'Recurso $modNum';
 
-            final resolvedUrl = Uri.parse(baseUrl).resolve(href).toString();
+            final resolvedUrl = stripSensitiveQueryParams(resolvedUri.toString());
             seenUrls.add(resolvedUrl);
 
             // Deadlines from activity-dates
@@ -992,6 +1198,12 @@ class MoodleService {
 
             final isResource = modType == 'resource';
             final ext = isResource ? inferFileExt(title, resolvedUrl) : '';
+            final fileNameWithExt = isResource
+                ? (ext.isNotEmpty &&
+                        !title.toLowerCase().endsWith('.${ext.toLowerCase()}')
+                    ? '$title.$ext'
+                    : title)
+                : '';
 
             final item = MoodleItem(
               id: modKey,
@@ -1000,7 +1212,7 @@ class MoodleService {
               section: secTitle,
               type: modType,
               url: resolvedUrl,
-              fileName: isResource ? '$title${ext.isNotEmpty ? ".$ext" : ""}' : '',
+              fileName: fileNameWithExt,
               fileExt: ext,
               downloadable: isResource,
               dueTimestamp: dueTs,
@@ -1048,19 +1260,21 @@ class MoodleService {
     List<MoodleItem> out,
     Set<String> seenUrls,
   ) {
+    final baseUri = Uri.tryParse(baseUrl);
     final mediaEls = root.querySelectorAll(
       'a[href*="pluginfile.php"], video source[src*="pluginfile.php"], audio source[src*="pluginfile.php"], iframe[src*="pluginfile.php"]',
     );
     for (final el in mediaEls) {
       final rawHref = el.attributes['href'] ?? el.attributes['src'] ?? '';
       if (rawHref.isEmpty) continue;
-      final cleanUrl = Uri.parse(baseUrl).resolve(rawHref).toString();
+      final resolved = baseUri?.resolve(rawHref);
+      if (resolved == null) continue;
+      final cleanUrl = stripSensitiveQueryParams(resolved.toString());
       if (!seenUrls.add(cleanUrl)) continue;
 
       final uriPath = Uri.tryParse(cleanUrl)?.path ?? '';
-      final urlBaseName = uriPath.isNotEmpty
-          ? Uri.decodeComponent(p.basename(uriPath))
-          : '';
+      final urlBaseName =
+          uriPath.isNotEmpty ? _tryDecodeComponent(p.basename(uriPath)) : '';
       var label = _cleanMoodleTitle(el.text);
       if (label.isEmpty || label.length > 100) {
         label = urlBaseName.isNotEmpty ? urlBaseName : 'Archivo adjunto';
@@ -1070,7 +1284,7 @@ class MoodleService {
       if (ext.isEmpty && !cleanUrl.contains('pluginfile.php')) continue;
 
       out.add(MoodleItem(
-        id: '${courseId}_emb_${cleanUrl.hashCode.abs()}',
+        id: '${courseId}_emb_${_shortHash(cleanUrl)}',
         courseId: courseId,
         title: label,
         section: sectionTitle,
@@ -1083,19 +1297,85 @@ class MoodleService {
     }
   }
 
-  Future<List<MoodleItem>> _extractFolderFiles(
-    MoodleItem folderItem,
-    Set<String> seenUrls,
-  ) async {
+  Future<List<MoodleItem>> _extractFolderFiles(MoodleItem folderItem) async {
     try {
       final res = await _getFollowingRedirects(folderItem.url);
       final html = utf8.decode(res.bodyBytes, allowMalformed: true);
-      if (res.statusCode != 200 || !isAuthenticatedMoodleHtml(html)) {
+      if (!isAuthenticatedMoodleHtml(html)) {
+        throw SessionExpiredException();
+      }
+      if (res.statusCode != 200) {
         return [folderItem];
       }
 
       final doc = html_parser.parse(html);
       final extracted = <MoodleItem>[];
+      final localSeen = <String>{};
+      final folderUri =
+          Uri.tryParse(res.finalUrl) ?? Uri.tryParse(folderItem.url);
+
+      void addPluginLink(dom.Element a, String subPath) {
+        final href = a.attributes['href'] ?? '';
+        if (href.isEmpty || folderUri == null) return;
+        final resolved = folderUri.resolve(href);
+        final cleanUrl = stripSensitiveQueryParams(
+          _ensureForcedDownload(resolved.toString()),
+        );
+        if (!localSeen.add(cleanUrl)) return;
+        final rawName = _cleanMoodleTitle(
+          a.querySelector('.fp-filename')?.text ?? a.text,
+        );
+        final urlName = _tryDecodeComponent(
+          p.basename(Uri.tryParse(cleanUrl)?.path ?? ''),
+        );
+        final fname = rawName.isNotEmpty ? rawName : urlName;
+        final ext = inferFileExt(fname, cleanUrl);
+        final fullSection = subPath.isEmpty
+            ? '${folderItem.section} / ${folderItem.title}'
+            : '${folderItem.section} / ${folderItem.title} / $subPath';
+
+        extracted.add(MoodleItem(
+          id: '${folderItem.id}_f_${_shortHash(cleanUrl)}',
+          courseId: folderItem.courseId,
+          title: fname,
+          section: fullSection,
+          type: 'resource',
+          url: cleanUrl,
+          fileName: fname,
+          fileExt: ext,
+          downloadable: true,
+        ));
+      }
+
+      List<dom.Element> directPluginLinksOutsideNestedUl(dom.Element li) {
+        final links = <dom.Element>[];
+        void scanNonUl(dom.Element el) {
+          for (final child in el.children) {
+            if (child.localName == 'ul') continue;
+            if (child.localName == 'a' &&
+                (child.attributes['href'] ?? '').contains('pluginfile.php')) {
+              links.add(child);
+            } else {
+              scanNonUl(child);
+            }
+          }
+        }
+        scanNonUl(li);
+        return links;
+      }
+
+      String extractDirectFolderLabel(dom.Element li) {
+        for (final child in li.children) {
+          if (child.localName == 'ul') continue;
+          final fp = child.querySelector('.fp-filename')?.text ??
+              (child.classes.contains('fp-filename') ? child.text : null) ??
+              child.querySelector('span')?.text ??
+              (child.localName == 'span' ? child.text : null);
+          final cleaned = _cleanMoodleTitle(fp ?? '');
+          if (cleaned.isNotEmpty) return cleaned;
+        }
+        return '';
+      }
 
       void walkTree(dom.Element ulOrContainer, String subPath) {
         for (final li in ulOrContainer.children) {
@@ -1103,55 +1383,24 @@ class MoodleService {
             walkTree(li, subPath);
             continue;
           }
-          // Check if subfolder
-          final nestedUl = li.querySelector(':scope > ul');
-          final link = li.querySelector(':scope a[href*="pluginfile.php"]') ??
-              li.querySelector('.fp-filename-icon a[href*="pluginfile.php"]');
+          final nestedUls =
+              li.children.where((c) => c.localName == 'ul').toList();
+          final directLinks = directPluginLinksOutsideNestedUl(li);
 
-          if (nestedUl != null && link == null) {
-            final dirLabel = _cleanMoodleTitle(
-              li.querySelector('.fp-filename')?.text ??
-                  li.querySelector('span')?.text ??
-                  '',
-            );
+          if (directLinks.isNotEmpty) {
+            for (final a in directLinks) {
+              addPluginLink(a, subPath);
+            }
+            for (final nestedUl in nestedUls) {
+              walkTree(nestedUl, subPath);
+            }
+          } else if (nestedUls.isNotEmpty) {
+            final dirLabel = extractDirectFolderLabel(li);
             final nextSub = dirLabel.isNotEmpty
                 ? (subPath.isEmpty ? dirLabel : '$subPath / $dirLabel')
                 : subPath;
-            walkTree(nestedUl, nextSub);
-          } else {
-            for (final a in li.querySelectorAll('a[href*="pluginfile.php"]')) {
-              final href = a.attributes['href'] ?? '';
-              if (href.isEmpty) continue;
-              final cleanUrl = _ensureForcedDownload(
-                Uri.parse(folderItem.url).resolve(href).toString(),
-              );
-              if (!seenUrls.add(cleanUrl)) continue;
-              final rawName = _cleanMoodleTitle(
-                a.querySelector('.fp-filename')?.text ?? a.text,
-              );
-              final urlName = Uri.decodeComponent(
-                p.basename(Uri.tryParse(cleanUrl)?.path ?? ''),
-              );
-              final fname = rawName.isNotEmpty ? rawName : urlName;
-              final ext = inferFileExt(fname, cleanUrl);
-              final fullSection = subPath.isEmpty
-                  ? '${folderItem.section} / ${folderItem.title}'
-                  : '${folderItem.section} / ${folderItem.title} / $subPath';
-
-              extracted.add(MoodleItem(
-                id: '${folderItem.id}_f_${cleanUrl.hashCode.abs()}',
-                courseId: folderItem.courseId,
-                title: fname,
-                section: fullSection,
-                type: 'resource',
-                url: cleanUrl,
-                fileName: fname,
-                fileExt: ext,
-                downloadable: true,
-              ));
-            }
-            if (nestedUl != null) {
-              walkTree(nestedUl, subPath);
+            for (final nestedUl in nestedUls) {
+              walkTree(nestedUl, nextSub);
             }
           }
         }
@@ -1170,31 +1419,7 @@ class MoodleService {
       // Fallback flat search in case Moodle theme uses divs/tables inside mod_folder
       if (extracted.isEmpty) {
         for (final a in doc.querySelectorAll('a[href*="pluginfile.php"]')) {
-          final href = a.attributes['href'] ?? '';
-          if (href.isEmpty) continue;
-          final cleanUrl = _ensureForcedDownload(
-            Uri.parse(folderItem.url).resolve(href).toString(),
-          );
-          if (!seenUrls.add(cleanUrl)) continue;
-          final rawName = _cleanMoodleTitle(
-            a.querySelector('.fp-filename')?.text ?? a.text,
-          );
-          final urlName = Uri.decodeComponent(
-            p.basename(Uri.tryParse(cleanUrl)?.path ?? ''),
-          );
-          final fname = rawName.isNotEmpty ? rawName : urlName;
-          final ext = inferFileExt(fname, cleanUrl);
-          extracted.add(MoodleItem(
-            id: '${folderItem.id}_f_${cleanUrl.hashCode.abs()}',
-            courseId: folderItem.courseId,
-            title: fname,
-            section: '${folderItem.section} / ${folderItem.title}',
-            type: 'resource',
-            url: cleanUrl,
-            fileName: fname,
-            fileExt: ext,
-            downloadable: true,
-          ));
+          addPluginLink(a, '');
         }
       }
 
@@ -1208,10 +1433,11 @@ class MoodleService {
         final zipAction = zipBtn.attributes['action'] ?? '';
         final idInput =
             zipBtn.querySelector('input[name="id"]')?.attributes['value'] ?? '';
-        if (zipAction.isNotEmpty && idInput.isNotEmpty) {
-          final zipUrl = Uri.parse(folderItem.url)
-              .resolve('$zipAction?id=$idInput')
-              .toString();
+        if (zipAction.isNotEmpty && idInput.isNotEmpty && folderUri != null) {
+          final actionUri = folderUri.resolve(zipAction);
+          final mergedParams = Map<String, String>.from(actionUri.queryParameters)
+            ..['id'] = idInput;
+          final zipUrl = actionUri.replace(queryParameters: mergedParams).toString();
           return [
             MoodleItem(
               id: folderItem.id,
@@ -1239,6 +1465,8 @@ class MoodleService {
           downloadable: false,
         ),
       ];
+    } on SessionExpiredException {
+      rethrow;
     } catch (_) {
       return [
         MoodleItem(
@@ -1267,13 +1495,20 @@ class MoodleService {
       sharedIndex['items'] as Map? ?? {},
     );
 
+    final canonicalRoot =
+        root.isNotEmpty ? p.canonicalize(root) : '';
+
     for (final course in courses) {
-      final courseFolder =
-          course.obsidianFolder.isNotEmpty ? course.obsidianFolder : course.cleanName;
-      final sub = course.targetSubfolder.trim();
-      final baseCoursePath = sub.isNotEmpty
-          ? p.join(root, courseFolder, sub)
-          : p.join(root, courseFolder);
+      final courseFolder = sanitizeDirSegment(
+        course.obsidianFolder.isNotEmpty ? course.obsidianFolder : course.cleanName,
+      );
+      final subSegments = course.targetSubfolder
+          .trim()
+          .split(RegExp(r'[/\\]+'))
+          .where((s) => s.trim().isNotEmpty)
+          .map((s) => sanitizeDirSegment(s.trim()))
+          .toList();
+      final baseCoursePath = p.joinAll([root, courseFolder, ...subSegments]);
 
       for (final item in course.items) {
         item.isNew = item.downloadable && !seenIds.contains(item.id);
@@ -1282,19 +1517,26 @@ class MoodleService {
 
         if (!item.downloadable) continue;
 
-        // 1. Check shared index
+        // 1. Check shared index (verify canonical path stays inside downloadRoot)
         final idxEntry = indexedItems[item.id];
         if (idxEntry is Map) {
           final relPath = idxEntry['relPath']?.toString() ?? '';
-          if (relPath.isNotEmpty && root.isNotEmpty) {
-            final full = p.joinAll([root, ...relPath.split('/')]);
-            if (await File(full).exists()) {
-              item.isDownloaded = true;
-              item.localPath = full;
-              if ((idxEntry['fileName']?.toString() ?? '').isNotEmpty) {
-                item.fileName = idxEntry['fileName'].toString();
+          if (relPath.isNotEmpty && canonicalRoot.isNotEmpty) {
+            final segments = relPath
+                .split(RegExp(r'[/\\]+'))
+                .where((s) => s.isNotEmpty && s != '.')
+                .toList();
+            if (!segments.contains('..') && segments.isNotEmpty) {
+              final full = p.joinAll([root, ...segments]);
+              if (p.isWithin(canonicalRoot, p.canonicalize(full)) &&
+                  await File(full).exists()) {
+                item.isDownloaded = true;
+                item.localPath = full;
+                if ((idxEntry['fileName']?.toString() ?? '').isNotEmpty) {
+                  item.fileName = idxEntry['fileName'].toString();
+                }
+                continue;
               }
-              continue;
             }
           }
         }
@@ -1341,12 +1583,19 @@ class MoodleService {
     }
   }
 
+  static String sanitizeDirSegment(String raw) {
+    final clean = MoodleCourse.sanitizeFileName(raw);
+    if (clean.length <= 60) return clean;
+    final trimmed = clean.substring(0, 60).replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
+    return trimmed.isEmpty ? 'dir' : trimmed;
+  }
+
   static String buildItemTargetDir({
     required String downloadRoot,
     required MoodleCourse course,
     required MoodleItem item,
   }) {
-    final courseFolder = MoodleCourse.sanitizeFileName(
+    final courseFolder = sanitizeDirSegment(
       course.obsidianFolder.isNotEmpty
           ? course.obsidianFolder
           : course.cleanName,
@@ -1355,14 +1604,14 @@ class MoodleService {
     if (course.targetSubfolder.trim().isNotEmpty) {
       for (final seg in course.targetSubfolder.trim().split(RegExp(r'[/\\]+'))) {
         if (seg.trim().isNotEmpty) {
-          parts.add(MoodleCourse.sanitizeFileName(seg.trim()));
+          parts.add(sanitizeDirSegment(seg.trim()));
         }
       }
     }
     if (course.organizeBySection) {
       for (final seg in item.section.split('/')) {
         if (seg.trim().isNotEmpty) {
-          parts.add(MoodleCourse.sanitizeFileName(seg.trim()));
+          parts.add(sanitizeDirSegment(seg.trim()));
         }
       }
     }
@@ -1376,32 +1625,37 @@ class MoodleService {
     if (targets.isEmpty) return;
 
     for (var i = 0; i < targets.length; i += 5) {
-      final batch = targets.sublist(i, i + 5 > targets.length ? targets.length : i + 5);
+      final batch =
+          targets.sublist(i, i + 5 > targets.length ? targets.length : i + 5);
       await Future.wait(batch.map((item) async {
         try {
           var url = item.url;
           if (isTokenAuth) url = _appendToken(url);
-          final req = http.Request('HEAD', Uri.parse(url))
-            ..followRedirects = true
-            ..headers.addAll(isTokenAuth
-                ? {'User-Agent': userAgent}
-                : _cookieHeaders());
-          final streamed =
-              await _client.send(req).timeout(const Duration(seconds: 8));
-          await streamed.stream.drain<void>();
-          final lenStr = streamed.headers['content-length'];
+          final result = await _sendFollowingRedirects(
+            url,
+            method: 'HEAD',
+            persistCookies: false,
+            requestTimeout: const Duration(seconds: 8),
+          );
+          try {
+            await result.response.stream
+                .drain<void>()
+                .timeout(const Duration(seconds: 4));
+          } catch (_) {}
+
+          final lenStr = result.response.headers['content-length'];
           if (lenStr != null) {
             final len = int.tryParse(lenStr);
             if (len != null && len > 0) item.sizeBytes = len;
           }
           final extractedName = _extractFilenameFromResponse(
-            streamed.headers,
-            url,
+            result.response.headers,
+            result.finalUri.toString(),
             item.title,
           );
           if (extractedName.isNotEmpty) {
             item.fileName = extractedName;
-            final ext = inferFileExt(extractedName, url);
+            final ext = inferFileExt(extractedName, result.finalUri.toString());
             if (ext.isNotEmpty) item.fileExt = ext;
           }
         } catch (_) {}
@@ -1467,10 +1721,10 @@ class MoodleService {
           doc.querySelector('.urlworkaround a')?.attributes['href'];
 
       if (nextHref != null && nextHref.isNotEmpty) {
-        targetUrl = _ensureForcedDownload(
-          Uri.parse(res.finalUrl).resolve(nextHref).toString(),
-        );
-        if (isTokenAuth && targetUrl.contains('aula.usm.cl')) {
+        final nextResolved = Uri.tryParse(res.finalUrl)?.resolve(nextHref);
+        if (nextResolved == null) break;
+        targetUrl = _ensureForcedDownload(nextResolved.toString());
+        if (isTokenAuth) {
           targetUrl = _appendToken(targetUrl);
         }
         continue;
@@ -1482,6 +1736,133 @@ class MoodleService {
         bytes: res.bodyBytes,
         fileName: '$safeBase.html',
         fileExt: 'html',
+      );
+    }
+
+    throw Exception('No se pudo extraer el archivo real desde ${item.title}');
+  }
+
+  /// Streams a Moodle resource directly to [destinationFile] while computing SHA-256 on the fly.
+  Future<StreamedFileDownload> downloadItemToFile(
+    MoodleItem item,
+    File destinationFile, {
+    void Function(int received, int? total)? onProgress,
+  }) async {
+    if (!isAuthenticated) throw SessionExpiredException();
+
+    var targetUrl = _ensureForcedDownload(item.url);
+    if (isTokenAuth) {
+      targetUrl = _appendToken(targetUrl);
+    }
+
+    for (var unwrapHop = 0; unwrapHop < 3; unwrapHop++) {
+      final result = await _sendFollowingRedirects(
+        targetUrl,
+        method: 'GET',
+        requestTimeout: const Duration(seconds: 30),
+      );
+      final streamed = result.response;
+      final finalUrl = result.finalUri.toString();
+
+      if (streamed.statusCode == 401 || streamed.statusCode == 403) {
+        try {
+          await streamed.stream.drain<void>();
+        } catch (_) {}
+        throw SessionExpiredException();
+      }
+      if (streamed.statusCode < 200 || streamed.statusCode >= 400) {
+        try {
+          await streamed.stream.drain<void>();
+        } catch (_) {}
+        throw Exception(
+          'Error HTTP ${streamed.statusCode} al descargar ${item.title}',
+        );
+      }
+
+      final contentType =
+          (streamed.headers['content-type'] ?? '').toLowerCase();
+      if (!contentType.contains('text/html')) {
+        final rawName = _extractFilenameFromResponse(
+          streamed.headers,
+          finalUrl,
+          item.fileName.isNotEmpty ? item.fileName : item.title,
+        );
+        final ext = _resolveExtension(
+          rawName,
+          finalUrl,
+          contentType,
+          item.effectiveExt,
+        );
+        final finalName = _ensureFilenameHasExt(rawName, ext);
+
+        await destinationFile.parent.create(recursive: true);
+        final digestSink = _DigestSink();
+        final hashSink = sha256.startChunkedConversion(digestSink);
+        final total = int.tryParse(streamed.headers['content-length'] ?? '');
+        var received = 0;
+        final sink = destinationFile.openWrite();
+        try {
+          await for (final chunk in streamed.stream
+              .timeout(const Duration(seconds: 60))) {
+            sink.add(chunk);
+            hashSink.add(chunk);
+            received += chunk.length;
+            onProgress?.call(received, total);
+          }
+          await sink.flush();
+          hashSink.close();
+        } finally {
+          await sink.close();
+        }
+        return StreamedFileDownload(
+          fileName: finalName,
+          fileExt: ext,
+          sizeBytes: received,
+          sha256Hex: digestSink.value?.toString() ?? '',
+        );
+      }
+
+      // Inspect HTML wrapper returned by Moodle
+      final bodyBytes =
+          await streamed.stream.toBytes().timeout(const Duration(seconds: 30));
+      final html = utf8.decode(bodyBytes, allowMalformed: true);
+      if (!isAuthenticatedMoodleHtml(html) &&
+          (html.contains('login/index.php') ||
+              html.contains('login.microsoftonline.com'))) {
+        throw SessionExpiredException();
+      }
+
+      final doc = html_parser.parse(html);
+      final nextHref = doc.querySelector('.resourceworkaround a')?.attributes['href'] ??
+          doc.querySelector('.resourcecontent a[href*="pluginfile.php"]')?.attributes['href'] ??
+          doc.querySelector('.resourcepdf object')?.attributes['data'] ??
+          doc.querySelector('iframe[src*="pluginfile.php"]')?.attributes['src'] ??
+          doc.querySelector('embed[src*="pluginfile.php"]')?.attributes['src'] ??
+          doc.querySelector('video source[src*="pluginfile.php"]')?.attributes['src'] ??
+          doc.querySelector('audio source[src*="pluginfile.php"]')?.attributes['src'] ??
+          doc.querySelector('a[href*="pluginfile.php"]')?.attributes['href'] ??
+          doc.querySelector('.urlworkaround a')?.attributes['href'];
+
+      if (nextHref != null && nextHref.isNotEmpty) {
+        final nextResolved = Uri.tryParse(finalUrl)?.resolve(nextHref);
+        if (nextResolved == null) break;
+        targetUrl = _ensureForcedDownload(nextResolved.toString());
+        if (isTokenAuth) {
+          targetUrl = _appendToken(targetUrl);
+        }
+        continue;
+      }
+
+      // No file inside HTML -> write HTML page directly
+      await destinationFile.parent.create(recursive: true);
+      await destinationFile.writeAsBytes(bodyBytes, flush: true);
+      final digest = sha256.convert(bodyBytes).toString();
+      final safeBase = MoodleCourse.sanitizeFileName(item.title);
+      return StreamedFileDownload(
+        fileName: '$safeBase.html',
+        fileExt: 'html',
+        sizeBytes: bodyBytes.length,
+        sha256Hex: digest,
       );
     }
 
@@ -1550,7 +1931,12 @@ class MoodleService {
   }
 
   String _appendToken(String url) {
-    if (token.isEmpty || url.contains('token=') || url.contains('wstoken=')) {
+    final uri = Uri.tryParse(url);
+    if (token.isEmpty || uri == null || !isTrustedAulaUri(uri)) {
+      return url;
+    }
+    if (uri.queryParameters.containsKey('token') ||
+        uri.queryParameters.containsKey('wstoken')) {
       return url;
     }
     var updated = url;
@@ -1561,8 +1947,11 @@ class MoodleService {
         '/webservice/pluginfile.php/',
       );
     }
-    final sep = updated.contains('?') ? '&' : '?';
-    return '$updated${sep}token=${Uri.encodeQueryComponent(token)}';
+    final parsed = Uri.tryParse(updated);
+    if (parsed == null) return updated;
+    final params = Map<String, String>.from(parsed.queryParameters)
+      ..['token'] = token;
+    return parsed.replace(queryParameters: params).toString();
   }
 
   String _ensureForcedDownload(String url) {
@@ -1707,50 +2096,149 @@ class MoodleService {
     if (rawText.trim().isEmpty) return null;
     const months = {
       'enero': 1,
+      'ene': 1,
+      'january': 1,
+      'jan': 1,
       'febrero': 2,
+      'feb': 2,
+      'february': 2,
       'marzo': 3,
+      'mar': 3,
+      'march': 3,
       'abril': 4,
+      'abr': 4,
+      'april': 4,
+      'apr': 4,
       'mayo': 5,
+      'may': 5,
       'junio': 6,
+      'jun': 6,
+      'june': 6,
       'julio': 7,
+      'jul': 7,
+      'july': 7,
       'agosto': 8,
+      'ago': 8,
+      'august': 8,
+      'aug': 8,
       'septiembre': 9,
       'setiembre': 9,
+      'sep': 9,
+      'sept': 9,
+      'september': 9,
       'octubre': 10,
+      'oct': 10,
+      'october': 10,
       'noviembre': 11,
+      'nov': 11,
+      'november': 11,
       'diciembre': 12,
+      'dic': 12,
+      'december': 12,
+      'dec': 12,
     };
 
+    const dueMarkers = [
+      'vence',
+      'vencimiento',
+      'cierre',
+      'cierra',
+      'entrega',
+      'hasta',
+      'due',
+      'closes',
+      'close',
+      'cutoff',
+    ];
+    const openMarkers = [
+      'apertura',
+      'abierto',
+      'abre',
+      'opens',
+      'opened',
+    ];
+
     final lower = rawText.toLowerCase();
-    final esRegex = RegExp(
-      r'(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})(?:,?\s*(?:a\s+las\s+)?(\d{1,2}):(\d{2}))?',
+    bool hasDuePrefix(String prefix) =>
+        dueMarkers.any((k) => prefix.contains(k));
+    bool hasOpenPrefix(String prefix) =>
+        openMarkers.any((k) => prefix.contains(k));
+
+    // Matches both Spanish ("15 de abril de 2026, 23:59") and English ("15 April 2026, 23:59" or "April 15, 2026, 23:59")
+    final dateCandidates = <({int start, int day, int month, int year, int hour, int min})>[];
+
+    final esOrEnDayFirst = RegExp(
+      r'(\d{1,2})\s+(?:de\s+)?([a-záéíóú]+)\s+(?:de\s+)?(\d{4})(?:,?\s*(?:a\s+las\s+)?(\d{1,2}):(\d{2}))?',
     );
-    final matches = esRegex.allMatches(lower).toList();
-    // Prefer the last date match if "Vence" / "Cierre" appears right before it
-    RegExpMatch? chosen;
-    for (final m in matches) {
-      final prefixStart = m.start - 40 < 0 ? 0 : m.start - 40;
-      final prefix = lower.substring(prefixStart, m.start);
-      if (prefix.contains('vence') ||
-          prefix.contains('cierre') ||
-          prefix.contains('cierra') ||
-          prefix.contains('entrega') ||
-          prefix.contains('hasta')) {
-        chosen = m;
+    for (final m in esOrEnDayFirst.allMatches(lower)) {
+      final month = months[m.group(2)!];
+      if (month == null) continue;
+      final day = int.tryParse(m.group(1)!) ?? 0;
+      final year = int.tryParse(m.group(3)!) ?? DateTime.now().year;
+      final hour = int.tryParse(m.group(4) ?? '23') ?? 23;
+      final min = int.tryParse(m.group(5) ?? '59') ?? 59;
+      if (day >= 1 && day <= 31) {
+        dateCandidates.add((
+          start: m.start,
+          day: day,
+          month: month,
+          year: year,
+          hour: hour,
+          min: min,
+        ));
       }
     }
-    chosen ??= matches.isNotEmpty ? matches.last : null;
 
-    if (chosen != null) {
-      final day = int.tryParse(chosen.group(1)!) ?? 1;
-      final monthName = chosen.group(2)!;
-      final month = months[monthName];
-      final year = int.tryParse(chosen.group(3)!) ?? DateTime.now().year;
-      final hour = int.tryParse(chosen.group(4) ?? '23') ?? 23;
-      final min = int.tryParse(chosen.group(5) ?? '59') ?? 59;
-      if (month != null) {
-        return DateTime(year, month, day, hour, min);
+    final enMonthFirst = RegExp(
+      r'([a-záéíóú]+)\s+(\d{1,2}),?\s+(\d{4})(?:,?\s*(\d{1,2}):(\d{2}))?',
+    );
+    for (final m in enMonthFirst.allMatches(lower)) {
+      final month = months[m.group(1)!];
+      if (month == null) continue;
+      final day = int.tryParse(m.group(2)!) ?? 0;
+      final year = int.tryParse(m.group(3)!) ?? DateTime.now().year;
+      final hour = int.tryParse(m.group(4) ?? '23') ?? 23;
+      final min = int.tryParse(m.group(5) ?? '59') ?? 59;
+      if (day >= 1 && day <= 31) {
+        dateCandidates.add((
+          start: m.start,
+          day: day,
+          month: month,
+          year: year,
+          hour: hour,
+          min: min,
+        ));
       }
+    }
+
+    if (dateCandidates.isNotEmpty) {
+      dateCandidates.sort((a, b) => a.start.compareTo(b.start));
+      ({int start, int day, int month, int year, int hour, int min})? chosen;
+      for (final cand in dateCandidates) {
+        final prefixStart = cand.start - 40 < 0 ? 0 : cand.start - 40;
+        final prefix = lower.substring(prefixStart, cand.start);
+        if (hasDuePrefix(prefix)) {
+          chosen = cand;
+        }
+      }
+      if (chosen == null) {
+        final onlyCand = dateCandidates.length == 1 ? dateCandidates.first : null;
+        if (onlyCand != null) {
+          final prefixStart = onlyCand.start - 40 < 0 ? 0 : onlyCand.start - 40;
+          final prefix = lower.substring(prefixStart, onlyCand.start);
+          if (hasOpenPrefix(prefix) && !dueMarkers.any(lower.contains)) {
+            return null;
+          }
+        }
+        chosen = dateCandidates.last;
+      }
+      return DateTime(
+        chosen.year,
+        chosen.month,
+        chosen.day,
+        chosen.hour,
+        chosen.min,
+      );
     }
 
     // Numeric dd/mm/yyyy HH:mm

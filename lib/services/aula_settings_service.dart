@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,19 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/aula_course.dart';
+import 'secure_credential_store.dart';
+
+class _Sha256Sink implements Sink<Digest> {
+  Digest? value;
+
+  @override
+  void add(Digest data) {
+    value = data;
+  }
+
+  @override
+  void close() {}
+}
 
 class StoragePermissionException implements Exception {
   final String message;
@@ -372,6 +386,9 @@ class SettingsService {
   }
 
   Future<String> getDefaultDownloadRoot() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return p.join(Directory.current.path, 'Aula-USM');
+    }
     if (Platform.isAndroid) {
       final extRoot = await getExternalRootPath();
       final obsidianDocs = Directory(p.join(extRoot, 'Documents', 'Obsidian'));
@@ -452,18 +469,26 @@ class SettingsService {
 
   Future<bool> requestStoragePermission() async {
     if (!Platform.isAndroid) return true;
-    final sdk = await getAndroidSdkInt();
-    if (sdk >= 30) {
-      final status = await Permission.manageExternalStorage.request();
+    try {
+      final sdk = await getAndroidSdkInt();
+      if (sdk >= 30) {
+        final status = await Permission.manageExternalStorage.request();
+        return status.isGranted;
+      }
+      final status = await Permission.storage.request();
       return status.isGranted;
+    } catch (_) {
+      return false;
     }
-    final status = await Permission.storage.request();
-    return status.isGranted;
   }
 
   Future<bool> openAppAllFilesSettings() async {
     if (!Platform.isAndroid) return false;
-    return openAppSettings();
+    try {
+      return await openAppSettings();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<String?> pickFolderWithSystemPicker() async {
@@ -505,18 +530,62 @@ class SettingsService {
     }
   }
 
+  static const Set<String> dangerousExtensions = {
+    'apk',
+    'exe',
+    'msi',
+    'bat',
+    'cmd',
+    'ps1',
+    'vbs',
+    'vbe',
+    'js',
+    'jse',
+    'wsf',
+    'wsh',
+    'scr',
+    'pif',
+    'com',
+    'hta',
+    'lnk',
+    'reg',
+    'sh',
+    'bash',
+    'appimage',
+    'deb',
+    'rpm',
+    'jar',
+    'dll',
+    'so',
+    'dylib',
+  };
+
+  static bool isDangerousFile(String path) {
+    final ext = p.extension(path).toLowerCase().replaceFirst('.', '');
+    return ext.isNotEmpty && dangerousExtensions.contains(ext);
+  }
+
   Future<void> showNativeNotification({
     required int id,
     required String title,
     required String body,
+    String channelId = 'aula_updates',
   }) async {
     if (!Platform.isAndroid || !notifyNativeEnabled) return;
     try {
       await _storageChannel.invokeMethod('showNativeNotification', {
         'id': id,
+        'channelId': channelId,
         'title': title,
         'body': body,
       });
+    } catch (_) {}
+  }
+
+  Future<void> clearWebViewCookies() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _storageChannel.invokeMethod<void>('clearWebViewCookies');
     } catch (_) {}
   }
 
@@ -555,16 +624,35 @@ class SettingsService {
       } catch (_) {}
     }
     try {
-      final bytes = await file.readAsBytes();
-      return _PureDartSha256.digestHex(bytes);
+      final digestSink = _Sha256Sink();
+      final hashSink = sha256.startChunkedConversion(digestSink);
+      await for (final chunk in file.openRead()) {
+        hashSink.add(chunk);
+      }
+      hashSink.close();
+      return digestSink.value?.toString();
     } catch (_) {
       return null;
     }
   }
 
-  Future<bool> openLocalFile(String path) async {
+  Future<bool> openLocalFile(
+    String path, {
+    bool allowDangerous = false,
+  }) async {
     final file = File(path);
     if (!await file.exists()) return false;
+    if (!allowDangerous && isDangerousFile(path)) {
+      return false;
+    }
+    final root = await getDownloadRoot();
+    if (root.isNotEmpty) {
+      final canonicalRoot = p.canonicalize(root);
+      final canonicalPath = p.canonicalize(path);
+      if (!p.isWithin(canonicalRoot, canonicalPath)) {
+        return false;
+      }
+    }
     if (Platform.isAndroid) {
       try {
         final ok = await _storageChannel.invokeMethod<bool>(
@@ -582,13 +670,51 @@ class SettingsService {
     }
   }
 
+  static const String _secTokenKey = 'aula_sec_moodle_token';
+  static const String _secCookieKey = 'aula_sec_moodle_cookie';
+  static const String _secSesskeyKey = 'aula_sec_moodle_sesskey';
+
   Future<AulaSessionData> loadSession() async {
     final prefs = await SharedPreferences.getInstance();
+
+    var token = await SecureCredentialStore.read(_secTokenKey) ?? '';
+    var cookie = await SecureCredentialStore.read(_secCookieKey) ?? '';
+    var sesskey = await SecureCredentialStore.read(_secSesskeyKey) ?? '';
+
+    final legacyToken = prefs.getString('moodle_token') ?? '';
+    final legacyCookie = prefs.getString('moodle_cookie') ?? '';
+    final legacySesskey = prefs.getString('moodle_sesskey') ?? '';
+
+    var migrated = false;
+    if (token.isEmpty && legacyToken.isNotEmpty) {
+      token = legacyToken;
+      await SecureCredentialStore.write(_secTokenKey, token);
+      migrated = true;
+    }
+    if (cookie.isEmpty && legacyCookie.isNotEmpty) {
+      cookie = legacyCookie;
+      await SecureCredentialStore.write(_secCookieKey, cookie);
+      migrated = true;
+    }
+    if (sesskey.isEmpty && legacySesskey.isNotEmpty) {
+      sesskey = legacySesskey;
+      await SecureCredentialStore.write(_secSesskeyKey, sesskey);
+      migrated = true;
+    }
+    if (migrated ||
+        prefs.containsKey('moodle_token') ||
+        prefs.containsKey('moodle_cookie') ||
+        prefs.containsKey('moodle_sesskey')) {
+      await prefs.remove('moodle_token');
+      await prefs.remove('moodle_cookie');
+      await prefs.remove('moodle_sesskey');
+    }
+
     final uidRaw = prefs.get('moodle_user_id')?.toString() ?? '';
     return AulaSessionData(
-      token: prefs.getString('moodle_token') ?? '',
-      cookie: prefs.getString('moodle_cookie') ?? '',
-      sesskey: prefs.getString('moodle_sesskey') ?? '',
+      token: token,
+      cookie: cookie,
+      sesskey: sesskey,
       userName: prefs.getString('moodle_user_name') ?? '',
       userId: int.tryParse(uidRaw),
     );
@@ -596,20 +722,51 @@ class SettingsService {
 
   Future<void> saveSession(AulaSessionData session) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('moodle_token', session.token);
-    await prefs.setString('moodle_cookie', session.cookie);
-    await prefs.setString('moodle_sesskey', session.sesskey);
+
+    if (session.token.isNotEmpty) {
+      await SecureCredentialStore.write(_secTokenKey, session.token);
+    } else {
+      await SecureCredentialStore.delete(_secTokenKey);
+    }
+    if (session.cookie.isNotEmpty) {
+      await SecureCredentialStore.write(_secCookieKey, session.cookie);
+    } else {
+      await SecureCredentialStore.delete(_secCookieKey);
+    }
+    if (session.sesskey.isNotEmpty) {
+      await SecureCredentialStore.write(_secSesskeyKey, session.sesskey);
+    } else {
+      await SecureCredentialStore.delete(_secSesskeyKey);
+    }
+
+    await prefs.remove('moodle_token');
+    await prefs.remove('moodle_cookie');
+    await prefs.remove('moodle_sesskey');
     await prefs.setString('moodle_user_name', session.userName);
     await prefs.setString('moodle_user_id', session.userIdString);
   }
 
   Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('moodle_token');
-    await prefs.remove('moodle_cookie');
-    await prefs.remove('moodle_sesskey');
-    await prefs.remove('moodle_user_name');
-    await prefs.remove('moodle_user_id');
+    await SecureCredentialStore.delete(_secTokenKey);
+    await SecureCredentialStore.delete(_secCookieKey);
+    await SecureCredentialStore.delete(_secSesskeyKey);
+
+    for (final k in const [
+      'moodle_token',
+      'moodle_cookie',
+      'moodle_sesskey',
+      'moodle_user_name',
+      'moodle_user_id',
+      'aula_token',
+      'aula_cookie',
+      'aula_sesskey',
+      'aula_moodle_token',
+      'aula_moodle_cookie',
+      keyScanCache,
+    ]) {
+      await prefs.remove(k);
+    }
   }
 
   String getCourseFolder(int courseId, [String fallback = '']) =>
@@ -621,7 +778,13 @@ class SettingsService {
   bool getCourseOrganizeBySection(int courseId) =>
       _courseOrgSections[courseId] ?? defaultOrganizeBySection;
 
-  int? getCourseRamoLink(int courseId) => _courseRamoLinks[courseId];
+  static const int unlinkedRamoSentinel = -1;
+
+  int? getCourseRamoLink(int courseId) {
+    final val = _courseRamoLinks[courseId];
+    if (val == null || val == unlinkedRamoSentinel) return null;
+    return val;
+  }
 
   Future<Map<int, String>> getCourseFolders() async {
     final prefs = await SharedPreferences.getInstance();
@@ -708,8 +871,8 @@ class SettingsService {
 
   Future<void> setCourseRamoLink(int courseId, int? ramoId) async {
     await getCourseRamoLinks();
-    if (ramoId == null) {
-      _courseRamoLinks.remove(courseId);
+    if (ramoId == null || ramoId == unlinkedRamoSentinel) {
+      _courseRamoLinks[courseId] = unlinkedRamoSentinel;
     } else {
       _courseRamoLinks[courseId] = ramoId;
     }
@@ -841,8 +1004,16 @@ class SettingsService {
     await _persistCourseFolders();
   }
 
-  Future<void> recordDownloadHistory(DownloadHistoryEntry entry) async {
-    history.insert(0, entry);
+  Future<void> recordDownloadHistory(DownloadHistoryEntry entry) =>
+      recordDownloadHistoryBatch([entry]);
+
+  Future<void> recordDownloadHistoryBatch(
+    List<DownloadHistoryEntry> entries,
+  ) async {
+    if (entries.isEmpty) return;
+    for (final entry in entries.reversed) {
+      history.insert(0, entry);
+    }
     if (history.length > 200) {
       history.removeRange(200, history.length);
     }
@@ -1144,9 +1315,13 @@ class SettingsService {
 
         String? importedRoot;
         final rawRoot = map['download_root'] ?? map['obsidian_vault'] ?? map['vault_path'];
-        if (rawRoot is String && rawRoot.trim().isNotEmpty && await Directory(rawRoot.trim()).exists()) {
-          importedRoot = rawRoot.trim();
-          await setDownloadRoot(importedRoot);
+        if (rawRoot is String && rawRoot.trim().isNotEmpty) {
+          final candidateRoot = p.canonicalize(rawRoot.trim());
+          if (!candidateRoot.contains('\x00') &&
+              await Directory(candidateRoot).exists()) {
+            importedRoot = candidateRoot;
+            await setDownloadRoot(importedRoot);
+          }
         }
 
         int foldersCount = 0;
@@ -1154,8 +1329,9 @@ class SettingsService {
         if (rawFolders is Map) {
           rawFolders.forEach((k, v) {
             final cid = int.tryParse(k.toString());
-            if (cid != null && v != null && v.toString().trim().isNotEmpty) {
-              _courseFolders[cid] = v.toString().trim();
+            final rawName = v?.toString().trim() ?? '';
+            if (cid != null && rawName.isNotEmpty) {
+              _courseFolders[cid] = MoodleCourse.sanitizeFileName(rawName);
               foldersCount++;
             }
           });
@@ -1167,7 +1343,14 @@ class SettingsService {
           rawSubfolders.forEach((k, v) {
             final cid = int.tryParse(k.toString());
             if (cid != null && v != null) {
-              _courseSubfolders[cid] = v.toString().trim();
+              final cleanSegments = v
+                  .toString()
+                  .trim()
+                  .split(RegExp(r'[/\\]+'))
+                  .where((s) => s.trim().isNotEmpty)
+                  .map((s) => MoodleCourse.sanitizeFileName(s.trim()))
+                  .toList();
+              _courseSubfolders[cid] = cleanSegments.join('/');
             }
           });
           await _persistCourseSubfolders();
@@ -1245,82 +1428,4 @@ class AulaSettingsService {
   Future<Map<int, int>> getCourseRamoLinks() => _inner.getCourseRamoLinks();
   Future<AulaDesktopImportResult> detectAndImportLocalDesktopData() =>
       _inner.detectAndImportLocalDesktopData();
-}
-
-/// Minimal dependency-free SHA-256 implementation for cross-platform file deduplication.
-class _PureDartSha256 {
-  static const List<int> _k = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
-    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
-    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
-    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
-    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ];
-
-  static int _rotr(int x, int n) => ((x & 0xffffffff) >>> n) | ((x << (32 - n)) & 0xffffffff);
-
-  static String digestHex(Uint8List data) {
-    final bitLen = data.length * 8;
-    final padLen = ((56 - (data.length + 1) % 64) + 64) % 64;
-    final padded = Uint8List(data.length + 1 + padLen + 8);
-    padded.setRange(0, data.length, data);
-    padded[data.length] = 0x80;
-    final bd = ByteData.sublistView(padded);
-    bd.setUint64(padded.length - 8, bitLen);
-
-    final h = <int>[
-      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-    ];
-    final w = List<int>.filled(64, 0);
-
-    for (var offset = 0; offset < padded.length; offset += 64) {
-      for (var i = 0; i < 16; i++) {
-        w[i] = bd.getUint32(offset + i * 4);
-      }
-      for (var i = 16; i < 64; i++) {
-        final s0 = _rotr(w[i - 15], 7) ^ _rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
-        final s1 = _rotr(w[i - 2], 17) ^ _rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
-        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & 0xffffffff;
-      }
-
-      var a = h[0], b = h[1], c = h[2], d = h[3];
-      var e = h[4], f = h[5], g = h[6], hh = h[7];
-
-      for (var i = 0; i < 64; i++) {
-        final s1 = _rotr(e, 6) ^ _rotr(e, 11) ^ _rotr(e, 25);
-        final ch = (e & f) ^ ((~e) & g);
-        final temp1 = (hh + s1 + ch + _k[i] + w[i]) & 0xffffffff;
-        final s0 = _rotr(a, 2) ^ _rotr(a, 13) ^ _rotr(a, 22);
-        final maj = (a & b) ^ (a & c) ^ (b & c);
-        final temp2 = (s0 + maj) & 0xffffffff;
-
-        hh = g;
-        g = f;
-        f = e;
-        e = (d + temp1) & 0xffffffff;
-        d = c;
-        c = b;
-        b = a;
-        a = (temp1 + temp2) & 0xffffffff;
-      }
-
-      h[0] = (h[0] + a) & 0xffffffff;
-      h[1] = (h[1] + b) & 0xffffffff;
-      h[2] = (h[2] + c) & 0xffffffff;
-      h[3] = (h[3] + d) & 0xffffffff;
-      h[4] = (h[4] + e) & 0xffffffff;
-      h[5] = (h[5] + f) & 0xffffffff;
-      h[6] = (h[6] + g) & 0xffffffff;
-      h[7] = (h[7] + hh) & 0xffffffff;
-    }
-
-    return h.map((v) => v.toRadixString(16).padLeft(8, '0')).join();
-  }
 }

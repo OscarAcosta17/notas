@@ -31,6 +31,8 @@ class _BugReportSheetState extends State<BugReportSheet> {
   bool _includeLogs = true;
   List<CapturedErrorLog> _logs = [];
   bool _isSubmitting = false;
+  String? _bannerMessage;
+  bool _bannerIsError = false;
 
   @override
   void initState() {
@@ -53,16 +55,20 @@ class _BugReportSheetState extends State<BugReportSheet> {
     }
   }
 
-  void _showMessage(String msg) {
+  void _showMessage(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    setState(() {
+      _bannerMessage = msg;
+      _bannerIsError = isError;
+    });
   }
 
   bool _validateInputs() {
     if (_titleController.text.trim().isEmpty || _descController.text.trim().isEmpty) {
-      _showMessage('Completa un título breve y una descripción antes de enviar.');
+      _showMessage(
+        'Completa un título breve y una descripción antes de enviar.',
+        isError: true,
+      );
       return false;
     }
     return true;
@@ -99,51 +105,17 @@ class _BugReportSheetState extends State<BugReportSheet> {
         _showMessage('No se pudo abrir el navegador. Reporte copiado al portapapeles.');
       }
     } catch (e) {
-      _showMessage('Error al preparar el ticket: $e');
+      _showMessage('Error al preparar el ticket: $e', isError: true);
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  Future<String?> _promptGitHubToken(String? existingToken) async {
-    final controller = TextEditingController(text: existingToken ?? '');
-    final result = await showDialog<String>(
+  Future<String?> _promptGitHubToken(String? existingToken) {
+    return showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Token Personal de GitHub'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ingresa un Personal Access Token (con permiso public_repo/issues) para crear el ticket directamente desde la app:',
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'GitHub Token',
-                hintText: 'ghp_... o github_pat_...',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-            child: const Text('Enviar Ticket'),
-          ),
-        ],
-      ),
+      builder: (_) => _GitHubTokenDialog(savedSyncToken: existingToken),
     );
-    controller.dispose();
-    return result;
   }
 
   Future<void> _submitDirectWithToken() async {
@@ -158,13 +130,14 @@ class _BugReportSheetState extends State<BugReportSheet> {
     }
 
     if (!mounted) return;
-    final token = (savedToken != null && savedToken.trim().isNotEmpty)
-        ? savedToken
-        : await _promptGitHubToken(savedToken);
+    final token = await _promptGitHubToken(savedToken);
 
     if (token == null || token.trim().isEmpty || !mounted) return;
 
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _bannerMessage = null;
+    });
     try {
       final report = await _buildReport();
       final issue = await BugReportService.createGitHubIssueDirect(
@@ -191,7 +164,10 @@ class _BugReportSheetState extends State<BugReportSheet> {
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      _showMessage('No se pudo enviar vía API (prueba abrir en navegador): $e');
+      _showMessage(
+        'No se pudo enviar vía API (prueba abrir en navegador): $e',
+        isError: true,
+      );
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -394,6 +370,45 @@ class _BugReportSheetState extends State<BugReportSheet> {
                   ),
                 ),
               const SizedBox(height: 8),
+              if (_bannerMessage != null) ...[
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _bannerIsError
+                        ? scheme.errorContainer
+                        : scheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _bannerIsError
+                            ? Icons.error_outline_rounded
+                            : Icons.info_outline_rounded,
+                        size: 18,
+                        color: _bannerIsError
+                            ? scheme.onErrorContainer
+                            : scheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _bannerMessage!,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: _bannerIsError
+                                ? scheme.onErrorContainer
+                                : scheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -432,6 +447,92 @@ class _BugReportSheetState extends State<BugReportSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GitHubTokenDialog extends StatefulWidget {
+  final String? savedSyncToken;
+
+  const _GitHubTokenDialog({this.savedSyncToken});
+
+  @override
+  State<_GitHubTokenDialog> createState() => _GitHubTokenDialogState();
+}
+
+class _GitHubTokenDialogState extends State<_GitHubTokenDialog> {
+  final TextEditingController _controller = TextEditingController();
+  bool _useSavedSyncToken = false;
+
+  bool get _hasSavedToken =>
+      widget.savedSyncToken != null && widget.savedSyncToken!.trim().isNotEmpty;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Token Personal de GitHub'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Ingresa un Personal Access Token (permiso public_repo/issues) para enviar el ticket directamente a OscarAcosta17/notas:',
+            ),
+            if (_hasSavedToken) ...[
+              const SizedBox(height: 10),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _useSavedSyncToken,
+                title: const Text(
+                  'Usar token guardado de Cloud Sync',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Requiere confirmación explícita antes de usarlo en GitHub Issues.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                onChanged: (v) {
+                  setState(() => _useSavedSyncToken = v == true);
+                },
+              ),
+            ],
+            if (!_useSavedSyncToken) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _controller,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'GitHub Token',
+                  hintText: 'ghp_... o github_pat_...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final token = _useSavedSyncToken
+                ? widget.savedSyncToken!.trim()
+                : _controller.text.trim();
+            Navigator.pop(context, token);
+          },
+          child: const Text('Enviar Ticket'),
+        ),
+      ],
     );
   }
 }

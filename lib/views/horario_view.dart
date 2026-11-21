@@ -8,6 +8,7 @@ import '../services/schedule_image_exporter.dart';
 import '../services/widget_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
+import '../utils/schedule_blocks.dart';
 
 class HorarioView extends StatefulWidget {
   final int semesterId;
@@ -89,30 +90,14 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
     }
   }
 
-  String _formatBlock(int bloque) {
-    switch (bloque) {
-      case 1:
-        return '08:15 - 09:25';
-      case 3:
-        return '09:40 - 10:50';
-      case 5:
-        return '11:05 - 12:15';
-      case 7:
-        return '12:30 - 13:40';
-      case 9:
-        return '14:40 - 15:50';
-      case 11:
-        return '16:05 - 17:15';
-      case 13:
-        return '17:30 - 18:40';
-      case 15:
-        return '18:55 - 20:05';
-      default:
-        return 'Desconocido';
-    }
-  }
-
-  Future<void> _saveClase(String subjectName, int diaSemana, int bloque, String sala, String paralelo, [int? existingId]) async {
+  Future<void> _saveClase(
+    String subjectName,
+    int diaSemana,
+    int bloque,
+    String sala,
+    String paralelo, [
+    int? existingId,
+  ]) async {
     final nueva = ClaseHorario(
       id: existingId,
       semesterId: widget.semesterId,
@@ -134,6 +119,7 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
       await NotificationService.scheduleClassReminder(nueva);
     }
     WidgetService.updateHorarioWidget();
+    if (!mounted) return;
     _loadHorario();
   }
 
@@ -141,6 +127,7 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
     await DatabaseHelper.instance.deleteHorario(clase.id!);
     await NotificationService.cancelClassReminder(clase.id!);
     WidgetService.updateHorarioWidget();
+    if (!mounted) return;
     _loadHorario();
   }
 
@@ -152,91 +139,15 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
       return;
     }
 
-    String selectedSubjectName = existingClase?.subjectName ?? _subjects.first['name'] as String;
-    if (!_subjects.any((s) => s['name'] == selectedSubjectName)) {
-      selectedSubjectName = _subjects.first['name'] as String;
-    }
-
-    final salaCtrl = TextEditingController(text: existingClase?.sala ?? '');
-    final paraleloCtrl = TextEditingController(text: existingClase?.paralelo ?? '');
-    int selectedBloque = existingClase?.bloque ?? 1;
-
     showDialog(
       context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateSB) {
-            return AlertDialog(
-              title: Text(existingClase == null ? 'Añadir clase al ${_dias[diaSemana - 1]}' : 'Editar clase'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      initialValue: selectedSubjectName,
-                      decoration: const InputDecoration(labelText: 'Ramo'),
-                      items: _subjects.map((s) {
-                        final name = s['name'] as String;
-                        return DropdownMenuItem<String>(
-                          value: name,
-                          child: Text(name),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setStateSB(() => selectedSubjectName = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedBloque,
-                      decoration: const InputDecoration(labelText: 'Bloque'),
-                      items: [1, 3, 5, 7, 9, 11, 13, 15].map((b) {
-                        return DropdownMenuItem(
-                          value: b,
-                          child: Text('Bloque $b-${b + 1} (${_formatBlock(b)})'),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setStateSB(() => selectedBloque = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: salaCtrl,
-                      decoration: const InputDecoration(labelText: 'Sala'),
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: paraleloCtrl,
-                      decoration: const InputDecoration(labelText: 'Paralelo'),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    _saveClase(
-                      selectedSubjectName,
-                      diaSemana,
-                      selectedBloque,
-                      salaCtrl.text.trim(),
-                      paraleloCtrl.text.trim(),
-                      existingClase?.id,
-                    );
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Guardar'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => _HorarioClassDialog(
+        diaSemana: diaSemana,
+        dayName: _dias[diaSemana - 1],
+        subjects: _subjects,
+        existingClase: existingClase,
+        onSave: _saveClase,
+      ),
     );
   }
 
@@ -348,13 +259,17 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
       saveText: 'Continuar',
     );
 
-    if (picked != null) {
-      if (openWithExternalApp) {
-        final filePath = await IcsExportService.generateHorarioIcsPath(_clases, picked.start, picked.end);
-        await OpenFilex.open(filePath);
-      } else {
-        await IcsExportService.exportHorario(_clases, picked.start, picked.end);
-      }
+    if (!mounted || picked == null) return;
+    if (openWithExternalApp) {
+      final filePath = await IcsExportService.generateHorarioIcsPath(
+        _clases,
+        picked.start,
+        picked.end,
+      );
+      if (!mounted) return;
+      await OpenFilex.open(filePath);
+    } else {
+      await IcsExportService.exportHorario(_clases, picked.start, picked.end);
     }
   }
 
@@ -468,7 +383,7 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
                                         borderRadius: BorderRadius.circular(AppTheme.radiusFull),
                                       ),
                                       child: Text(
-                                        'Bloque ${c.bloque}-${c.bloque + 1} · ${_formatBlock(c.bloque)}',
+                                        'Bloque ${c.bloque}-${c.bloque + 1} · ${ScheduleBlocks.formatBlockRange(c.bloque)}',
                                         style: TextStyle(
                                           color: tokens.onAccentContainer,
                                           fontWeight: FontWeight.w700,
@@ -522,6 +437,142 @@ class HorarioViewState extends State<HorarioView> with SingleTickerProviderState
           );
         }),
       ),
+    );
+  }
+}
+
+class _HorarioClassDialog extends StatefulWidget {
+  final int diaSemana;
+  final String dayName;
+  final List<Map<String, dynamic>> subjects;
+  final ClaseHorario? existingClase;
+  final Future<void> Function(
+    String subjectName,
+    int diaSemana,
+    int bloque,
+    String sala,
+    String paralelo, [
+    int? existingId,
+  ]) onSave;
+
+  const _HorarioClassDialog({
+    required this.diaSemana,
+    required this.dayName,
+    required this.subjects,
+    required this.onSave,
+    this.existingClase,
+  });
+
+  @override
+  State<_HorarioClassDialog> createState() => _HorarioClassDialogState();
+}
+
+class _HorarioClassDialogState extends State<_HorarioClassDialog> {
+  late String _selectedSubjectName;
+  late int _selectedBloque;
+  late final TextEditingController _salaCtrl;
+  late final TextEditingController _paraleloCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final candidateSubject =
+        widget.existingClase?.subjectName ?? widget.subjects.first['name'] as String;
+    _selectedSubjectName = widget.subjects.any((s) => s['name'] == candidateSubject)
+        ? candidateSubject
+        : widget.subjects.first['name'] as String;
+    final candidateBloque =
+        widget.existingClase?.bloque ?? ScheduleBlocks.validBlocks.first;
+    _selectedBloque = ScheduleBlocks.validBlocks.contains(candidateBloque)
+        ? candidateBloque
+        : ScheduleBlocks.validBlocks.first;
+    _salaCtrl = TextEditingController(text: widget.existingClase?.sala ?? '');
+    _paraleloCtrl =
+        TextEditingController(text: widget.existingClase?.paralelo ?? '');
+  }
+
+  @override
+  void dispose() {
+    _salaCtrl.dispose();
+    _paraleloCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        widget.existingClase == null
+            ? 'Añadir clase al ${widget.dayName}'
+            : 'Editar clase',
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _selectedSubjectName,
+              decoration: const InputDecoration(labelText: 'Ramo'),
+              items: widget.subjects.map((s) {
+                final name = s['name'] as String;
+                return DropdownMenuItem<String>(
+                  value: name,
+                  child: Text(name),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedSubjectName = val);
+              },
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<int>(
+              initialValue: _selectedBloque,
+              decoration: const InputDecoration(labelText: 'Bloque'),
+              items: ScheduleBlocks.validBlocks.map((b) {
+                return DropdownMenuItem(
+                  value: b,
+                  child: Text(
+                    'Bloque $b-${b + 1} (${ScheduleBlocks.formatBlockRange(b)})',
+                  ),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedBloque = val);
+              },
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _salaCtrl,
+              decoration: const InputDecoration(labelText: 'Sala'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _paraleloCtrl,
+              decoration: const InputDecoration(labelText: 'Paralelo'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            widget.onSave(
+              _selectedSubjectName,
+              widget.diaSemana,
+              _selectedBloque,
+              _salaCtrl.text.trim(),
+              _paraleloCtrl.text.trim(),
+              widget.existingClase?.id,
+            );
+            Navigator.pop(context);
+          },
+          child: const Text('Guardar'),
+        ),
+      ],
     );
   }
 }

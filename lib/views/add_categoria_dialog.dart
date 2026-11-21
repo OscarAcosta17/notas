@@ -119,7 +119,7 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                   ),
                 ],
               ),
-              if (pesoMaximoDisponible == 0)
+              if (pesoMaximoDisponible <= 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Text(
@@ -129,11 +129,15 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                 )
               else
                 Slider(
-                  value: _porcentaje,
+                  value: _porcentaje.clamp(0.0, pesoMaximoDisponible),
                   min: 0,
                   max: pesoMaximoDisponible,
-                  divisions: pesoMaximoDisponible > 0 ? pesoMaximoDisponible.toInt() : 1,
-                  label: '${_porcentaje.toInt()}%',
+                  divisions: pesoMaximoDisponible >= 1
+                      ? pesoMaximoDisponible.round().clamp(1, 100)
+                      : 1,
+                  label: pesoMaximoDisponible >= 1
+                      ? '${_porcentaje.toInt()}%'
+                      : '${_porcentaje.toStringAsFixed(1)}%',
                   onChanged: (val) {
                     setState(() {
                       _porcentaje = val;
@@ -175,10 +179,20 @@ class _AddCategoriaDialogState extends ConsumerState<AddCategoriaDialog> {
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: 'Autocrear N evaluaciones vacías',
+                  hintText: '0 a 50',
                 ),
+                validator: (val) {
+                  final parsed = int.tryParse((val ?? '').trim());
+                  if (val != null && val.trim().isNotEmpty) {
+                    if (parsed == null || parsed < 0 || parsed > 50) {
+                      return 'Ingresa entre 0 y 50';
+                    }
+                  }
+                  return null;
+                },
                 onChanged: (val) {
                   setState(() {
-                    _autoCreateCount = int.tryParse(val) ?? 0;
+                    _autoCreateCount = (int.tryParse(val.trim()) ?? 0).clamp(0, 50);
                   });
                 },
               ),

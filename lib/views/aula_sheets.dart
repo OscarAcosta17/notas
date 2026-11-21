@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../models/aula_course.dart';
 import '../services/aula_service.dart';
 
 // ============================================================================
@@ -106,38 +107,17 @@ class _FolderPickerSheetState extends State<_FolderPickerSheet> {
   }
 
   Future<void> _createNewFolder() async {
-    final ctrl = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nueva carpeta'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Nombre de la carpeta',
-            hintText: 'Ej: Obsidian USM',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Crear'),
-          ),
-        ],
-      ),
+      builder: (_) => const _NewFolderDialog(),
     );
-    if (name == null || name.isEmpty) return;
-    final clean = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    if (!mounted || name == null || name.isEmpty) return;
+    final clean = MoodleCourse.sanitizeFileName(name);
     if (clean.isEmpty) return;
     final newPath = p.join(_currentPath, clean);
     try {
       await Directory(newPath).create(recursive: true);
+      if (!mounted) return;
       await _loadDir(newPath);
     } catch (e) {
       if (!mounted) return;
@@ -269,8 +249,10 @@ class _FolderPickerSheetState extends State<_FolderPickerSheet> {
                   TextButton(
                     onPressed: () async {
                       await widget.settings.requestStoragePermission();
-                      _hasPermission =
+                      final granted =
                           await widget.settings.hasStoragePermission();
+                      if (!mounted) return;
+                      _hasPermission = granted;
                       await _loadDir(_currentPath);
                     },
                     child: const Text('Permitir'),
@@ -449,192 +431,275 @@ class _FolderPickerSheetState extends State<_FolderPickerSheet> {
 // 2. Token & Cookie Login Dialogs
 // ============================================================================
 
+class _NewFolderDialog extends StatefulWidget {
+  const _NewFolderDialog();
+
+  @override
+  State<_NewFolderDialog> createState() => _NewFolderDialogState();
+}
+
+class _NewFolderDialogState extends State<_NewFolderDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nueva carpeta'),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Nombre de la carpeta',
+          hintText: 'Ej: Obsidian USM',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text.trim()),
+          child: const Text('Crear'),
+        ),
+      ],
+    );
+  }
+}
+
 Future<bool> showTokenLoginDialog(
   BuildContext context,
   MoodleService moodle,
 ) async {
-  final ctrl = TextEditingController();
-  var loading = false;
-  String? errorMsg;
-
   final result = await showDialog<bool>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.vpn_key_rounded),
-              SizedBox(width: 10),
-              Text('Token de WebService'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Pega tu token personal de Moodle desde Aula USM → Preferencias → Claves de seguridad (Moodle mobile web service).',
-                style: TextStyle(fontSize: 12.5),
-              ),
-              const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: () {
-                  launchUrl(
-                    Uri.parse('${MoodleService.baseUrl}/user/managetoken.php'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-                icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                label: const Text('Abrir claves de seguridad en navegador'),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: ctrl,
-                decoration: const InputDecoration(
-                  labelText: 'Token (wstoken)',
-                  hintText: 'Ej: 3a9e8b...',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (errorMsg != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  errorMsg!,
-                  style: TextStyle(
-                    color: Theme.of(ctx).colorScheme.error,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: loading ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: loading
-                  ? null
-                  : () async {
-                      setState(() {
-                        loading = true;
-                        errorMsg = null;
-                      });
-                      try {
-                        await moodle.loginWithToken(ctrl.text);
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      } catch (e) {
-                        setState(() {
-                          loading = false;
-                          errorMsg = e.toString();
-                        });
-                      }
-                    },
-              child: loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Validar'),
-            ),
-          ],
-        );
-      },
-    ),
+    builder: (_) => _TokenLoginDialog(moodle: moodle),
   );
   return result == true;
+}
+
+class _TokenLoginDialog extends StatefulWidget {
+  final MoodleService moodle;
+
+  const _TokenLoginDialog({required this.moodle});
+
+  @override
+  State<_TokenLoginDialog> createState() => _TokenLoginDialogState();
+}
+
+class _TokenLoginDialogState extends State<_TokenLoginDialog> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
+  String? _errorMsg;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _loading = true;
+      _errorMsg = null;
+    });
+    try {
+      await widget.moodle.loginWithToken(_ctrl.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _errorMsg = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.vpn_key_rounded),
+          SizedBox(width: 10),
+          Text('Token de WebService'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Pega tu token personal de Moodle desde Aula USM → Preferencias → Claves de seguridad (Moodle mobile web service).',
+            style: TextStyle(fontSize: 12.5),
+          ),
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: () {
+              launchUrl(
+                Uri.parse('${MoodleService.baseUrl}/user/managetoken.php'),
+                mode: LaunchMode.externalApplication,
+              );
+            },
+            icon: const Icon(Icons.open_in_new_rounded, size: 16),
+            label: const Text('Abrir claves de seguridad en navegador'),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _ctrl,
+            decoration: const InputDecoration(
+              labelText: 'Token (wstoken)',
+              hintText: 'Ej: 3a9e8b...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_errorMsg != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _errorMsg!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Validar'),
+        ),
+      ],
+    );
+  }
 }
 
 Future<bool> showCookieLoginDialog(
   BuildContext context,
   MoodleService moodle,
 ) async {
-  final ctrl = TextEditingController();
-  var loading = false;
-  String? errorMsg;
-
   final result = await showDialog<bool>(
     context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.cookie_rounded),
-              SizedBox(width: 10),
-              Text('Cookie MoodleSession'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Útil en PC o si prefieres iniciar sesión en tu navegador. Pega la cookie completa o solo el valor de MoodleSession.',
-                style: TextStyle(fontSize: 12.5),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Cookie / MoodleSession',
-                  hintText: 'MoodleSession=abc123...',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              if (errorMsg != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  errorMsg!,
-                  style: TextStyle(
-                    color: Theme.of(ctx).colorScheme.error,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: loading ? null : () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: loading
-                  ? null
-                  : () async {
-                      setState(() {
-                        loading = true;
-                        errorMsg = null;
-                      });
-                      try {
-                        await moodle.loginWithCookie(ctrl.text);
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      } catch (e) {
-                        setState(() {
-                          loading = false;
-                          errorMsg = e.toString();
-                        });
-                      }
-                    },
-              child: loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Conectar'),
-            ),
-          ],
-        );
-      },
-    ),
+    builder: (_) => _CookieLoginDialog(moodle: moodle),
   );
   return result == true;
+}
+
+class _CookieLoginDialog extends StatefulWidget {
+  final MoodleService moodle;
+
+  const _CookieLoginDialog({required this.moodle});
+
+  @override
+  State<_CookieLoginDialog> createState() => _CookieLoginDialogState();
+}
+
+class _CookieLoginDialogState extends State<_CookieLoginDialog> {
+  final _ctrl = TextEditingController();
+  bool _loading = false;
+  String? _errorMsg;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _loading = true;
+      _errorMsg = null;
+    });
+    try {
+      await widget.moodle.loginWithCookie(_ctrl.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _errorMsg = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.cookie_rounded),
+          SizedBox(width: 10),
+          Text('Cookie MoodleSession'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Útil en PC o si prefieres iniciar sesión en tu navegador. Pega la cookie completa o solo el valor de MoodleSession.',
+            style: TextStyle(fontSize: 12.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Cookie / MoodleSession',
+              hintText: 'MoodleSession=abc123...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_errorMsg != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _errorMsg!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _loading ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _loading ? null : _submit,
+          child: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Conectar'),
+        ),
+      ],
+    );
+  }
 }
 
 // ============================================================================
@@ -659,8 +724,20 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
   bool _captured = false;
   String _statusText = 'Cargando inicio de sesión USM...';
 
-  bool get _supportsEmbeddedWebView =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  bool get _supportsEmbeddedWebView => Platform.isAndroid;
+
+  static bool _isAllowedLoginUri(Uri? uri) {
+    if (uri == null || uri.scheme.toLowerCase() != 'https') return false;
+    final host = uri.host.toLowerCase();
+    return host == 'aula.usm.cl' ||
+        host.endsWith('.aula.usm.cl') ||
+        host == 'usm.cl' ||
+        host.endsWith('.usm.cl') ||
+        host == 'login.microsoftonline.com' ||
+        host.endsWith('.microsoftonline.com') ||
+        host == 'login.live.com' ||
+        host.endsWith('.live.com');
+  }
 
   @override
   void initState() {
@@ -675,11 +752,21 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            if (_isAllowedLoginUri(uri)) {
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
           onPageFinished: (url) async {
             if (!mounted || _captured) return;
-            setState(() => _statusText = url);
-            if (url.startsWith(MoodleService.baseUrl) &&
-                !url.contains('/login/')) {
+            setState(
+              () => _statusText = MoodleService.stripSensitiveQueryParams(url),
+            );
+            final parsed = Uri.tryParse(url);
+            if (MoodleService.isTrustedAulaUri(parsed) &&
+                !parsed!.path.contains('/login/')) {
               await _attemptCapture(url);
             }
           },
@@ -750,7 +837,7 @@ class _WebViewLoginScreenState extends State<WebViewLoginScreen> {
                   const Icon(Icons.desktop_windows_rounded, size: 54),
                   const SizedBox(height: 16),
                   const Text(
-                    'En Windows usa Token de WebService o Cookie MoodleSession',
+                    'En esta plataforma usa Token de WebService o Cookie MoodleSession',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                   ),
@@ -836,14 +923,23 @@ class _AuthenticatedWebViewerScreenState
     extends State<AuthenticatedWebViewerScreen> {
   WebViewController? _controller;
   bool _loading = true;
+  late final Uri? _validatedUri = _parseSafeUri(widget.url);
 
-  bool get _supportsEmbeddedWebView =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  bool get _supportsEmbeddedWebView => Platform.isAndroid;
+
+  static Uri? _parseSafeUri(String raw) {
+    final cleaned = MoodleService.stripSensitiveQueryParams(raw.trim());
+    final uri = Uri.tryParse(cleaned);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return null;
+    }
+    return uri;
+  }
 
   @override
   void initState() {
     super.initState();
-    if (_supportsEmbeddedWebView) {
+    if (_supportsEmbeddedWebView && _validatedUri != null) {
       _initWebView();
     } else {
       _loading = false;
@@ -851,7 +947,10 @@ class _AuthenticatedWebViewerScreenState
   }
 
   Future<void> _initWebView() async {
-    if (widget.cookie.isNotEmpty) {
+    final targetUri = _validatedUri;
+    if (targetUri == null) return;
+
+    if (widget.cookie.isNotEmpty && MoodleService.isTrustedAulaUri(targetUri)) {
       final manager = WebViewCookieManager();
       for (final part in widget.cookie.split(';')) {
         final eq = part.indexOf('=');
@@ -874,16 +973,29 @@ class _AuthenticatedWebViewerScreenState
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
           },
         ),
       )
-      ..loadRequest(Uri.parse(widget.url));
+      ..loadRequest(targetUri);
 
     if (mounted) {
       setState(() => _controller = ctrl);
     }
+  }
+
+  void _openExternal() {
+    final uri = _validatedUri;
+    if (uri == null) return;
+    launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -892,35 +1004,32 @@ class _AuthenticatedWebViewerScreenState
       appBar: AppBar(
         title: Text(widget.title, overflow: TextOverflow.ellipsis),
         actions: [
-          IconButton(
-            tooltip: 'Abrir en navegador externo',
-            onPressed: () => launchUrl(
-              Uri.parse(widget.url),
-              mode: LaunchMode.externalApplication,
+          if (_validatedUri != null)
+            IconButton(
+              tooltip: 'Abrir en navegador externo',
+              onPressed: _openExternal,
+              icon: const Icon(Icons.open_in_new_rounded),
             ),
-            icon: const Icon(Icons.open_in_new_rounded),
-          ),
         ],
       ),
-      body: !_supportsEmbeddedWebView
-          ? Center(
-              child: FilledButton.icon(
-                onPressed: () => launchUrl(
-                  Uri.parse(widget.url),
-                  mode: LaunchMode.externalApplication,
+      body: _validatedUri == null
+          ? const Center(child: Text('URL no válida para abrir en el visor.'))
+          : !_supportsEmbeddedWebView
+              ? Center(
+                  child: FilledButton.icon(
+                    onPressed: _openExternal,
+                    icon: const Icon(Icons.open_in_browser_rounded),
+                    label: const Text('Abrir actividad en tu navegador'),
+                  ),
+                )
+              : Stack(
+                  children: [
+                    if (_controller != null)
+                      WebViewWidget(controller: _controller!),
+                    if (_loading)
+                      const LinearProgressIndicator(minHeight: 3),
+                  ],
                 ),
-                icon: const Icon(Icons.open_in_browser_rounded),
-                label: const Text('Abrir actividad en tu navegador'),
-              ),
-            )
-          : Stack(
-              children: [
-                if (_controller != null)
-                  WebViewWidget(controller: _controller!),
-                if (_loading)
-                  const LinearProgressIndicator(minHeight: 3),
-              ],
-            ),
     );
   }
 }
@@ -972,34 +1081,76 @@ class _PairingModalSheetState extends State<_PairingModalSheet> {
 
   Future<void> _scanQr() async {
     final scanned = await widget.settings.scanQrCode();
-    if (scanned == null || scanned.trim().isEmpty) return;
+    if (!mounted || scanned == null || scanned.trim().isEmpty) return;
 
     final raw = scanned.trim();
     try {
+      var parsedOk = false;
       if (raw.startsWith('{')) {
-        final jsonMap = jsonDecode(raw) as Map<String, dynamic>;
-        final u = (jsonMap['url'] ?? jsonMap['server'] ?? '').toString();
-        final pin = (jsonMap['pin'] ?? '').toString();
-        if (u.isNotEmpty) _urlCtrl.text = u;
-        if (pin.isNotEmpty) _pinCtrl.text = pin;
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final u = (decoded['url'] ?? decoded['server'] ?? '').toString().trim();
+          final pin = (decoded['pin'] ?? '').toString().trim();
+          if (u.isNotEmpty) _urlCtrl.text = u;
+          if (pin.isNotEmpty) _pinCtrl.text = pin;
+          parsedOk = u.isNotEmpty && pin.isNotEmpty;
+        }
       } else {
         final uri = Uri.tryParse(raw);
         if (uri != null && uri.queryParameters.containsKey('pin')) {
-          final hostUrl = uri.queryParameters['url'] ??
-              '${uri.scheme.startsWith('http') ? uri.scheme : 'http'}://${uri.authority}';
-          _urlCtrl.text = hostUrl;
-          _pinCtrl.text = uri.queryParameters['pin'] ?? '';
+          final hostUrl = (uri.queryParameters['url'] ??
+                  (uri.authority.isNotEmpty
+                      ? '${uri.scheme.startsWith('http') ? uri.scheme : 'http'}://${uri.authority}'
+                      : ''))
+              .trim();
+          final pin = (uri.queryParameters['pin'] ?? '').trim();
+          if (hostUrl.isNotEmpty) _urlCtrl.text = hostUrl;
+          if (pin.isNotEmpty) _pinCtrl.text = pin;
+          parsedOk = hostUrl.isNotEmpty && pin.isNotEmpty;
         }
       }
-      if (_pinCtrl.text.trim().isNotEmpty) {
-        await _claim();
+      if (!parsedOk || _pinCtrl.text.trim().isEmpty) {
+        setState(() => _error = 'Código QR de emparejamiento inválido.');
+        return;
       }
-    } catch (_) {}
+      await _claim();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'No se pudo leer el código QR de emparejamiento.');
+      }
+    }
+  }
+
+  bool get _showsHttpWarning {
+    var raw = _urlCtrl.text.trim();
+    if (raw.isEmpty) return false;
+    if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+      raw = 'http://$raw';
+    }
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'http') return false;
+    final host = uri.host.toLowerCase();
+    return host.isNotEmpty &&
+        host != 'localhost' &&
+        host != '127.0.0.1' &&
+        host != '::1';
   }
 
   Future<void> _claim() async {
-    if (_urlCtrl.text.trim().isEmpty || _pinCtrl.text.trim().isEmpty) {
+    final rawUrl = _urlCtrl.text.trim();
+    final rawPin = _pinCtrl.text.trim();
+    if (rawUrl.isEmpty || rawPin.isEmpty) {
       setState(() => _error = 'Ingresa dirección del PC y PIN.');
+      return;
+    }
+    final checkUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+        ? rawUrl
+        : 'http://$rawUrl';
+    final uri = Uri.tryParse(checkUrl);
+    if (uri == null ||
+        (uri.scheme != 'http' && uri.scheme != 'https') ||
+        uri.host.isEmpty) {
+      setState(() => _error = 'Dirección de servidor inválida.');
       return;
     }
     setState(() {
@@ -1007,10 +1158,7 @@ class _PairingModalSheetState extends State<_PairingModalSheet> {
       _error = null;
     });
     try {
-      await widget.moodle.loginFromPairingClaim(
-        _urlCtrl.text.trim(),
-        _pinCtrl.text.trim(),
-      );
+      await widget.moodle.loginFromPairingClaim(rawUrl, rawPin);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -1076,6 +1224,7 @@ class _PairingModalSheetState extends State<_PairingModalSheet> {
             const SizedBox(height: 16),
             TextField(
               controller: _urlCtrl,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Dirección IP y puerto del PC',
                 hintText: '192.168.1.50:8000',
@@ -1083,6 +1232,35 @@ class _PairingModalSheetState extends State<_PairingModalSheet> {
                 border: OutlineInputBorder(),
               ),
             ),
+            if (_showsHttpWarning) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: cs.tertiaryContainer.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: cs.onTertiaryContainer,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Aviso: conexión http:// sin cifrar. Úsala solo en tu red local Wi-Fi de confianza.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: cs.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _pinCtrl,

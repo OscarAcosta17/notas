@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/aula_course.dart';
 import '../models/categoria_evaluacion.dart';
@@ -10,6 +12,8 @@ import '../models/semestre.dart';
 import 'aula_moodle_service.dart';
 import 'aula_settings_service.dart';
 import 'database_helper.dart';
+import 'notification_service.dart';
+import 'widget_service.dart';
 
 class DownloadBatchResult {
   final int savedFiles;
@@ -58,6 +62,7 @@ class DownloaderService {
     if (!await rootDir.exists()) {
       await rootDir.create(recursive: true);
     }
+    final canonicalRoot = p.canonicalize(downloadRoot);
 
     final tasks = <({MoodleCourse course, MoodleItem item})>[];
     for (final c in courses) {
@@ -77,6 +82,7 @@ class DownloaderService {
       sharedIndex['files'] as Map? ?? {},
     );
     final newIndexEntries = <Map<String, dynamic>>[];
+    final historyBatch = <DownloadHistoryEntry>[];
 
     var saved = 0;
     var skipped = 0;
@@ -100,81 +106,153 @@ class DownloaderService {
         continue;
       }
 
+      File? partFile;
       try {
-        final data = await moodle.downloadItemData(item);
-        item.fileName = data.fileName;
-        if (data.fileExt.isNotEmpty) item.fileExt = data.fileExt;
-        item.sizeBytes = data.bytes.length;
-
         final targetDirPath = MoodleService.buildItemTargetDir(
           downloadRoot: downloadRoot,
           course: course,
           item: item,
         );
+        if (!p.isWithin(canonicalRoot, p.canonicalize(targetDirPath))) {
+          throw Exception('Ruta de destino fuera de la carpeta autorizada.');
+        }
         final targetDir = Directory(targetDirPath);
         if (!await targetDir.exists()) {
           await targetDir.create(recursive: true);
         }
 
-        final destPath = p.join(
-          targetDirPath,
-          MoodleCourse.sanitizeFileName(data.fileName),
-        );
-        final destFile = File(destPath);
+        final partName =
+            '.${MoodleCourse.sanitizeFileName(item.id)}_${DateTime.now().microsecondsSinceEpoch}.part';
+        partFile = File(p.join(targetDirPath, partName));
 
-        if (settings.skipAlreadyDownloaded && await destFile.exists()) {
-          final existingLen = await destFile.length();
-          if (existingLen == data.bytes.length) {
-            item.isDownloaded = true;
-            item.localPath = destPath;
-            item.isSelected = false;
-            skipped++;
-            seenIdsBatch.add(item.id);
-            touchedCourses.add(course);
-            continue;
+        final streamed = await moodle.downloadItemToFile(item, partFile);
+        item.fileName = streamed.fileName;
+        if (streamed.fileExt.isNotEmpty) item.fileExt = streamed.fileExt;
+        item.sizeBytes = streamed.sizeBytes;
+        final sha = streamed.sha256Hex;
+
+        // Deduplicate against already indexed identical SHA files if enabled
+        if (settings.skipAlreadyDownloaded &&
+            sha.isNotEmpty &&
+            indexedFiles.containsKey(sha)) {
+          final existingEntry = indexedFiles[sha];
+          if (existingEntry is Map) {
+            final existingRel = existingEntry['relPath']?.toString() ?? '';
+            final segs = existingRel
+                .split(RegExp(r'[/\\]+'))
+                .where((s) => s.isNotEmpty && s != '.')
+                .toList();
+            if (!segs.contains('..') && segs.isNotEmpty) {
+              final existingFull = p.joinAll([downloadRoot, ...segs]);
+              if (p.isWithin(canonicalRoot, p.canonicalize(existingFull)) &&
+                  await File(existingFull).exists()) {
+                item.isDownloaded = true;
+                item.localPath = existingFull;
+                item.isNew = false;
+                item.isSelected = false;
+                skipped++;
+                seenIdsBatch.add(item.id);
+                touchedCourses.add(course);
+                continue;
+              }
+            }
           }
         }
 
-        await destFile.writeAsBytes(data.bytes, flush: true);
-        final sha = await settings.computeFileSha256(destPath) ?? '';
-        final relPath =
-            p.relative(destPath, from: downloadRoot).replaceAll('\\', '/');
+        final cleanFileName = MoodleCourse.sanitizeFileName(streamed.fileName);
+        var finalDestPath = p.join(targetDirPath, cleanFileName);
+        if (!p.isWithin(canonicalRoot, p.canonicalize(finalDestPath))) {
+          throw Exception('Archivo fuera de la carpeta autorizada.');
+        }
 
-        if (sha.isNotEmpty && indexedFiles.containsKey(sha)) {
-          // Recorded in shared index for cross-section visibility
+        var alreadyIdentical = false;
+        if (await File(finalDestPath).exists()) {
+          final existingSha = await settings.computeFileSha256(finalDestPath);
+          if (settings.skipAlreadyDownloaded &&
+              existingSha != null &&
+              existingSha.isNotEmpty &&
+              existingSha == sha) {
+            alreadyIdentical = true;
+          } else {
+            // Avoid overwriting unrelated unindexed files with the same name
+            final base = p.basenameWithoutExtension(cleanFileName);
+            final ext = p.extension(cleanFileName);
+            var suffix = 2;
+            while (await File(finalDestPath).exists()) {
+              final candidateName =
+                  MoodleCourse.sanitizeFileName('$base ($suffix)$ext');
+              finalDestPath = p.join(targetDirPath, candidateName);
+              suffix++;
+            }
+          }
+        }
+
+        if (alreadyIdentical) {
+          item.isDownloaded = true;
+          item.localPath = finalDestPath;
+          item.isNew = false;
+          item.isSelected = false;
+          skipped++;
+          seenIdsBatch.add(item.id);
+          touchedCourses.add(course);
+          continue;
+        }
+
+        await _moveFileReplacing(partFile, File(finalDestPath));
+        partFile = null;
+
+        final relPath = p
+            .relative(finalDestPath, from: downloadRoot)
+            .replaceAll('\\', '/');
+        if (sha.isNotEmpty) {
+          indexedFiles[sha] = {
+            'relPath': relPath,
+            'sizeBytes': streamed.sizeBytes,
+            'title': item.title,
+          };
         }
 
         newIndexEntries.add({
           'itemId': item.id,
           'sha256': sha,
-          'fileName': data.fileName,
+          'fileName': p.basename(finalDestPath),
           'relPath': relPath,
-          'sizeBytes': data.bytes.length,
+          'sizeBytes': streamed.sizeBytes,
           'title': item.title,
         });
 
         item.isDownloaded = true;
-        item.localPath = destPath;
+        item.localPath = finalDestPath;
         item.isNew = false;
         item.isSelected = false;
         seenIdsBatch.add(item.id);
         touchedCourses.add(course);
         saved++;
 
-        await settings.recordDownloadHistory(DownloadHistoryEntry(
+        historyBatch.add(DownloadHistoryEntry(
           timestamp: DateTime.now().toIso8601String(),
           course: course.cleanName,
           title: item.title,
-          fileName: data.fileName,
-          savedPath: destPath,
-          sizeBytes: data.bytes.length,
+          fileName: p.basename(finalDestPath),
+          savedPath: finalDestPath,
+          sizeBytes: streamed.sizeBytes,
         ));
       } on SessionExpiredException {
         rethrow;
       } catch (e) {
         failed++;
         errors.add('${item.title}: $e');
+      } finally {
+        if (partFile != null) {
+          try {
+            if (await partFile.exists()) await partFile.delete();
+          } catch (_) {}
+        }
       }
+    }
+
+    if (historyBatch.isNotEmpty) {
+      await settings.recordDownloadHistoryBatch(historyBatch);
     }
 
     if (newIndexEntries.isNotEmpty) {
@@ -223,11 +301,42 @@ class DownloaderService {
     return _rebuildCourseGraphMarkdown(downloadRoot, course);
   }
 
+  static Future<void> _moveFileReplacing(File source, File dest) async {
+    try {
+      await source.rename(dest.path);
+    } on FileSystemException {
+      await source.copy(dest.path);
+      if (await source.exists()) {
+        await source.delete();
+      }
+    }
+  }
+
+  static String _safeMarkdownLabel(String raw) {
+    return raw
+        .replaceAll(RegExp(r'[\r\n]+'), ' ')
+        .replaceAll('[', r'\[')
+        .replaceAll(']', r'\]')
+        .trim();
+  }
+
+  static String _safeMarkdownLink(String label, String rawUrl) {
+    final cleanLabel = _safeMarkdownLabel(label);
+    final stripped = MoodleService.stripSensitiveQueryParams(rawUrl.trim());
+    final uri = Uri.tryParse(stripped);
+    if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https')) {
+      return cleanLabel;
+    }
+    final encoded = stripped.replaceAll(' ', '%20').replaceAll(')', '%29');
+    return '[$cleanLabel]($encoded)';
+  }
+
   Future<String> _rebuildCourseGraphMarkdown(
     String downloadRoot,
     MoodleCourse course,
   ) async {
-    final courseFolder = MoodleCourse.sanitizeFileName(
+    final canonicalRoot = p.canonicalize(downloadRoot);
+    final courseFolder = MoodleService.sanitizeDirSegment(
       course.obsidianFolder.isNotEmpty
           ? course.obsidianFolder
           : course.cleanName,
@@ -237,11 +346,14 @@ class DownloaderService {
       for (final seg
           in course.targetSubfolder.trim().split(RegExp(r'[/\\]+'))) {
         if (seg.trim().isNotEmpty) {
-          baseParts.add(MoodleCourse.sanitizeFileName(seg.trim()));
+          baseParts.add(MoodleService.sanitizeDirSegment(seg.trim()));
         }
       }
     }
     final courseBaseDirPath = p.joinAll(baseParts);
+    if (!p.isWithin(canonicalRoot, p.canonicalize(courseBaseDirPath))) {
+      throw Exception('Ruta de índice fuera de la carpeta destino.');
+    }
     final courseBaseDir = Directory(courseBaseDirPath);
     if (!await courseBaseDir.exists()) {
       await courseBaseDir.create(recursive: true);
@@ -261,11 +373,15 @@ class DownloaderService {
     for (final entry in groupedBySection.entries) {
       final secTitle = entry.key;
       final secItems = entry.value;
-      final cleanSecTitle = MoodleCourse.sanitizeFileName(secTitle);
-      final secNoteName = '00 - Seccion - $cleanSecTitle.md';
+      final cleanSecTitle = MoodleService.sanitizeDirSegment(secTitle);
+      final secNoteName =
+          MoodleCourse.sanitizeFileName('00 - Seccion - $cleanSecTitle.md');
       final secNoteDir = course.organizeBySection
           ? p.join(courseBaseDirPath, cleanSecTitle)
           : courseBaseDirPath;
+      if (!p.isWithin(canonicalRoot, p.canonicalize(secNoteDir))) {
+        continue;
+      }
       final secDirObj = Directory(secNoteDir);
       if (!await secDirObj.exists()) {
         await secDirObj.create(recursive: true);
@@ -273,19 +389,21 @@ class DownloaderService {
 
       final buf = StringBuffer();
       buf.writeln('---');
-      buf.writeln('curso: "${course.cleanName.replaceAll('"', '\\"')}"');
-      buf.writeln('seccion: "${secTitle.replaceAll('"', '\\"')}"');
+      buf.writeln('curso: ${jsonEncode(course.cleanName)}');
+      buf.writeln('seccion: ${jsonEncode(secTitle)}');
       buf.writeln('fuente: aula.usm.cl');
-      buf.writeln('actualizado: $nowIso');
+      buf.writeln('actualizado: ${jsonEncode(nowIso)}');
       buf.writeln('tags:');
       buf.writeln('  - aula-usm');
-      buf.writeln('  - ${MoodleCourse.normalizeForMatch(course.shortname.isNotEmpty ? course.shortname : course.cleanName).replaceAll(' ', '-')}');
+      buf.writeln(
+        '  - ${MoodleCourse.normalizeForMatch(course.shortname.isNotEmpty ? course.shortname : course.cleanName).replaceAll(' ', '-')}',
+      );
       buf.writeln('---');
       buf.writeln();
-      buf.writeln('# $secTitle');
+      buf.writeln('# ${secTitle.replaceAll(RegExp(r'[\r\n]+'), ' ')}');
       buf.writeln();
       buf.writeln(
-        '[[00 - Indice Aula - $courseFolder|← Volver al índice de ${course.cleanName}]]',
+        '[[00 - Indice Aula - $courseFolder|← Volver al índice de ${_safeMarkdownLabel(course.cleanName)}]]',
       );
       buf.writeln();
 
@@ -319,7 +437,9 @@ class DownloaderService {
               ? p.relative(f.localPath!, from: secNoteDir).replaceAll('\\', '/')
               : localName;
           final size = f.formattedSize.isNotEmpty ? ' (${f.formattedSize})' : '';
-          buf.writeln('- $status [[$relFromNote|${f.title}]]$size');
+          buf.writeln(
+            '- $status [[$relFromNote|${_safeMarkdownLabel(f.title)}]]$size',
+          );
         }
         buf.writeln();
       }
@@ -330,7 +450,7 @@ class DownloaderService {
           final due = t.formattedDueDate.isNotEmpty
               ? ' 📅 ${t.formattedDueDate}'
               : '';
-          buf.writeln('- [ ] [${t.title}](${t.url})$due');
+          buf.writeln('- [ ] ${_safeMarkdownLink(t.title, t.url)}$due');
         }
         buf.writeln();
       }
@@ -338,7 +458,7 @@ class DownloaderService {
       if (settings.autoExportLinksToObsidian && links.isNotEmpty) {
         buf.writeln('## Enlaces y Páginas');
         for (final l in links) {
-          buf.writeln('- 🔗 [${l.title}](${l.url})');
+          buf.writeln('- 🔗 ${_safeMarkdownLink(l.title, l.url)}');
         }
         buf.writeln();
       }
@@ -346,7 +466,7 @@ class DownloaderService {
       if (settings.autoExportForumsToObsidian && forums.isNotEmpty) {
         buf.writeln('## Foros y Anuncios');
         for (final fo in forums) {
-          buf.writeln('- 💬 [${fo.title}](${fo.url})');
+          buf.writeln('- 💬 ${_safeMarkdownLink(fo.title, fo.url)}');
         }
         buf.writeln();
       }
@@ -357,27 +477,34 @@ class DownloaderService {
       final relNotePath = course.organizeBySection
           ? '$cleanSecTitle/$secNoteName'
           : secNoteName;
-      sectionNoteLinks.add('- [[$relNotePath|$secTitle]] (${secItems.length})');
+      sectionNoteLinks.add(
+        '- [[$relNotePath|${_safeMarkdownLabel(secTitle)}]] (${secItems.length})',
+      );
     }
 
     // Main Course Index Note
-    final indexFileName = '00 - Indice Aula - $courseFolder.md';
+    final indexFileName =
+        MoodleCourse.sanitizeFileName('00 - Indice Aula - $courseFolder.md');
+    final cleanCourseUrl =
+        MoodleService.stripSensitiveQueryParams(course.url);
     final indexBuf = StringBuffer();
     indexBuf.writeln('---');
-    indexBuf.writeln('curso: "${course.cleanName.replaceAll('"', '\\"')}"');
-    indexBuf.writeln('codigo: "${course.shortname.replaceAll('"', '\\"')}"');
-    indexBuf.writeln('aula_url: "${course.url}"');
-    indexBuf.writeln('actualizado: $nowIso');
+    indexBuf.writeln('curso: ${jsonEncode(course.cleanName)}');
+    indexBuf.writeln('codigo: ${jsonEncode(course.shortname)}');
+    indexBuf.writeln('aula_url: ${jsonEncode(cleanCourseUrl)}');
+    indexBuf.writeln('actualizado: ${jsonEncode(nowIso)}');
     indexBuf.writeln('tags:');
     indexBuf.writeln('  - aula-usm');
     indexBuf.writeln('  - indice-curso');
     indexBuf.writeln('---');
     indexBuf.writeln();
-    indexBuf.writeln('# ${course.cleanName}');
+    indexBuf.writeln('# ${course.cleanName.replaceAll(RegExp(r'[\r\n]+'), ' ')}');
+    final openAulaLink = _safeMarkdownLink('Abrir en Aula USM', cleanCourseUrl);
     if (course.shortname.isNotEmpty) {
-      indexBuf.writeln('> Código Aula: `${course.shortname}` · [Abrir en Aula USM](${course.url})');
+      final safeShort = course.shortname.replaceAll('`', '');
+      indexBuf.writeln('> Código Aula: `$safeShort` · $openAulaLink');
     } else {
-      indexBuf.writeln('> [Abrir en Aula USM](${course.url})');
+      indexBuf.writeln('> $openAulaLink');
     }
     indexBuf.writeln();
 
@@ -390,7 +517,7 @@ class DownloaderService {
       indexBuf.writeln('> [!warning] Próximas entregas');
       for (final d in upcomingDeadlines) {
         indexBuf.writeln(
-          '> - [ ] **${d.title}** — ${d.formattedDueDate} ([Abrir](${d.url}))',
+          '> - [ ] **${_safeMarkdownLabel(d.title)}** — ${d.formattedDueDate} (${_safeMarkdownLink('Abrir', d.url)})',
         );
       }
       indexBuf.writeln();
@@ -431,14 +558,12 @@ class AulaNotasSynergyService {
     final ramos = rows.map(Ramo.fromMap).toList();
     for (final r in ramos) {
       if (r.id == null) continue;
-      final catRows = await _db.queryCategoriesBySubject(r.id!);
-      final cats = catRows.map(CategoriaEvaluacion.fromMap).toList();
-      for (final c in cats) {
-        if (c.id == null) continue;
-        final evRows = await _db.queryEvaluationsByCategory(c.id!);
-        c.evaluaciones = evRows.map(Evaluacion.fromMap).toList();
-      }
-      r.categorias = cats;
+      final grouped = await _db.queryCategoriesWithEvaluationsBySubject(r.id!);
+      r.categorias = grouped.map((entry) {
+        final cat = CategoriaEvaluacion.fromMap(entry.category);
+        cat.evaluaciones = entry.evaluations.map(Evaluacion.fromMap).toList();
+        return cat;
+      }).toList();
     }
     return ramos;
   }
@@ -447,22 +572,26 @@ class AulaNotasSynergyService {
     MoodleCourse course, {
     required int semesterId,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final escala = prefs.getString('escalaNotas') ?? '0 a 100';
+    final passing = escala == '1 a 7' ? 4.0 : 55.0;
+
     final ramo = Ramo(
       idSemestre: semesterId,
       nombre: course.cleanName,
       tipoPromedio: 'Aritmetico',
       tieneGlobal: false,
       reemplazaPeorNota: false,
-      notaAprobacion: 55.0,
+      notaAprobacion: passing,
     );
     final newId = await _db.insertSubject(ramo.toMap());
     ramo.id = newId;
 
-    // Create default category so Aula deadlines can be added cleanly
+    // Keep synced Aula tasks in a 0% bucket so they don't overwrite real grade weights.
     final cat = CategoriaEvaluacion(
       idRamo: newId,
-      nombre: 'Evaluaciones Aula',
-      porcentajeTotal: 100.0,
+      nombre: 'Aula USM',
+      porcentajeTotal: 0.0,
     );
     final catId = await _db.insertCategory(cat.toMap());
     cat.id = catId;
@@ -480,21 +609,19 @@ class AulaNotasSynergyService {
   }) async {
     if (ramo.id == null) return 0;
 
-    final catRows = await _db.queryCategoriesBySubject(ramo.id!);
-    var cats = catRows.map(CategoriaEvaluacion.fromMap).toList();
-    for (final c in cats) {
-      if (c.id != null) {
-        final evRows = await _db.queryEvaluationsByCategory(c.id!);
-        c.evaluaciones = evRows.map(Evaluacion.fromMap).toList();
-      }
-    }
+    final grouped = await _db.queryCategoriesWithEvaluationsBySubject(ramo.id!);
+    var cats = grouped.map((entry) {
+      final cat = CategoriaEvaluacion.fromMap(entry.category);
+      cat.evaluaciones = entry.evaluations.map(Evaluacion.fromMap).toList();
+      return cat;
+    }).toList();
 
     CategoriaEvaluacion targetCat;
     if (cats.isEmpty) {
       final created = CategoriaEvaluacion(
         idRamo: ramo.id!,
-        nombre: 'Evaluaciones Aula',
-        porcentajeTotal: 100.0,
+        nombre: 'Aula USM',
+        porcentajeTotal: 0.0,
       );
       created.id = await _db.insertCategory(created.toMap());
       targetCat = created;
@@ -508,6 +635,7 @@ class AulaNotasSynergyService {
         course.items.where((it) => it.isAssessableActivity && it.dueDate != null).toList();
 
     var added = 0;
+    final scheduledEvals = <Evaluacion>[];
     for (final item in sourceItems) {
       final due = item.dueDate;
       if (due == null) continue;
@@ -517,6 +645,7 @@ class AulaNotasSynergyService {
         if (match.fecha == null && match.id != null) {
           match.fecha = due;
           await _db.updateEvaluation(match.toMap());
+          scheduledEvals.add(match);
           added++;
         }
         continue;
@@ -532,7 +661,19 @@ class AulaNotasSynergyService {
       );
       newEval.id = await _db.insertEvaluation(newEval.toMap());
       existingAll.add(newEval);
+      scheduledEvals.add(newEval);
       added++;
+    }
+
+    for (final ev in scheduledEvals) {
+      try {
+        await NotificationService.scheduleEvaluationReminder(ev, ramo.nombre);
+      } catch (_) {}
+    }
+    if (added > 0) {
+      try {
+        await WidgetService.updateAgendaWidget();
+      } catch (_) {}
     }
 
     return added;

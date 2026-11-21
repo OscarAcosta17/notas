@@ -1,9 +1,32 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val keystoreProperties = Properties().apply {
+    val propsFile = rootProject.file("key.properties")
+    if (propsFile.exists()) {
+        propsFile.inputStream().use { load(it) }
+    }
+}
+
+val releaseStoreFile = System.getenv("RELEASE_STORE_FILE")
+    ?: keystoreProperties.getProperty("storeFile")
+val releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")
+    ?: keystoreProperties.getProperty("storePassword")
+val releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+    ?: keystoreProperties.getProperty("keyAlias")
+val releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+    ?: keystoreProperties.getProperty("keyPassword")
+val hasReleaseSigning = !releaseStoreFile.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank() &&
+    !releaseKeyAlias.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank() &&
+    file(releaseStoreFile).exists()
 
 android {
     namespace = "com.example.notas"
@@ -35,13 +58,25 @@ android {
         getByName("debug") {
             storeFile = file("debug.keystore")
         }
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Uses private release keystore when provided via key.properties or env vars;
+            // falls back to the local debug keystore otherwise to preserve OTA upgrade continuity.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }

@@ -235,7 +235,9 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
         ),
         itemCount: ramos.length,
         onReorder: (oldIndex, newIndex) {
-          ref.read(ramoProvider(widget.semestre.id!).notifier).reordenarRamos(oldIndex, newIndex);
+          ref
+              .read(ramoProvider(widget.semestre.id!).notifier)
+              .reordenarRamos(oldIndex, newIndex, adjustNewIndex: false);
         },
         itemBuilder: (context, index) {
           final ramo = ramos[index];
@@ -266,7 +268,9 @@ class SemestreDetailViewState extends ConsumerState<SemestreDetailView> {
           );
         },
         onReorder: (oldIndex, newIndex) {
-          ref.read(ramoProvider(widget.semestre.id!).notifier).reordenarRamos(oldIndex, newIndex);
+          ref
+              .read(ramoProvider(widget.semestre.id!).notifier)
+              .reordenarRamos(oldIndex, newIndex);
         },
         itemBuilder: (context, index) {
           final ramo = ramos[index];

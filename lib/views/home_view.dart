@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/semestre.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/updater_service.dart';
+import '../services/widget_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
 import '../viewmodels/semestre_provider.dart';
@@ -24,6 +28,8 @@ class HomeView extends ConsumerStatefulWidget {
 }
 
 class _HomeViewState extends ConsumerState<HomeView> {
+  static const String _lastSemesterKey = 'last_semester_id';
+
   int _currentTab = 0;
   int? _programmaticTargetTab;
   int? _selectedSemesterId;
@@ -40,6 +46,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentTab);
+    _loadPersistedSemester();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         UpdaterService.checkForUpdatesOnStartup(context);
@@ -50,6 +57,33 @@ class _HomeViewState extends ConsumerState<HomeView> {
         });
       }
     });
+  }
+
+  Future<void> _loadPersistedSemester() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedId = prefs.getInt(_lastSemesterKey);
+      if (savedId != null && _selectedSemesterId == null && mounted) {
+        setState(() => _selectedSemesterId = savedId);
+      }
+    } catch (_) {}
+  }
+
+  void _selectSemester(int? semesterId) {
+    setState(() => _selectedSemesterId = semesterId);
+    unawaited(_persistSelectedSemester(semesterId));
+  }
+
+  Future<void> _persistSelectedSemester(int? semesterId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (semesterId == null) {
+        await prefs.remove(_lastSemesterKey);
+      } else {
+        await prefs.setInt(_lastSemesterKey, semesterId);
+      }
+      unawaited(WidgetService.updateHorarioWidget());
+    } catch (_) {}
   }
 
   void _showDriveTokenExpiredDialog(String? message) {
@@ -237,7 +271,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
               if (semestre.id != null) {
                 await ref.read(semestreProvider.notifier).eliminarSemestre(semestre.id!);
                 if (_selectedSemesterId == semestre.id && mounted) {
-                  setState(() => _selectedSemesterId = null);
+                  _selectSemester(null);
                 }
               }
             },
@@ -301,7 +335,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
                       borderRadius: BorderRadius.circular(tokens.cardRadius),
                       onTap: () {
                         AppHaptics.selection(context);
-                        setState(() => _selectedSemesterId = sem.id);
+                        _selectSemester(sem.id);
                         Navigator.pop(sheetCtx);
                       },
                       onLongPress: () {
@@ -541,7 +575,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
               child: GestureDetector(
                 onTap: () {
                   AppHaptics.selection(context);
-                  setState(() => _selectedSemesterId = sem.id);
+                  _selectSemester(sem.id);
                 },
                 onLongPress: () => _showSemesterOptions(sem),
                 child: AnimatedContainer(

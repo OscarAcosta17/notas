@@ -1,9 +1,9 @@
 ; Inno Setup 6 script for NotasApp Windows Installer
 #ifndef AppTag
-  #define AppTag "v1.3.1"
+  #define AppTag "v1.3.2"
 #endif
 #ifndef AppVer
-  #define AppVer "1.3.1"
+  #define AppVer "1.3.2"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\build\windows\x64\runner\Release"

@@ -1,5 +1,16 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 import 'evaluacion.dart';
 import 'ramo.dart';
+
+int? _parseIntNullable(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value == null) return null;
+  return int.tryParse(value.toString().trim());
+}
 
 class MoodleItem {
   final String id;
@@ -47,8 +58,15 @@ class MoodleItem {
         sizeBytes = sizeBytes ?? fileSize,
         dueTimestamp = dueTimestamp ??
             (dueDate != null ? dueDate.millisecondsSinceEpoch ~/ 1000 : null),
-        id = id ??
-            '${courseId}_${(title ?? name ?? '').hashCode}_${url.hashCode}';
+        id = (id != null && id.isNotEmpty)
+            ? id
+            : _deterministicId(courseId, title ?? name ?? '', url);
+
+  static String _deterministicId(int courseId, String title, String url) {
+    final digest =
+        sha256.convert(utf8.encode('$courseId|$title|$url')).toString();
+    return '${courseId}_${digest.substring(0, 16)}';
+  }
 
   // Aliases for NotasApp compatibility
   String get name => title;
@@ -59,13 +77,20 @@ class MoodleItem {
       ? DateTime.fromMillisecondsSinceEpoch(dueTimestamp! * 1000)
       : null;
 
+  static const Set<String> _ignoredWebExts = {'php', 'aspx'};
+
   String get effectiveExt {
-    if (fileExt.isNotEmpty) return fileExt.toLowerCase();
+    if (fileExt.isNotEmpty) {
+      final lower = fileExt.toLowerCase();
+      if (!_ignoredWebExts.contains(lower)) return lower;
+    }
     final candidate = fileName.isNotEmpty ? fileName : url.split('?').first;
     final dot = candidate.lastIndexOf('.');
     if (dot != -1 && dot < candidate.length - 1) {
       final ext = candidate.substring(dot + 1).toLowerCase();
-      if (ext.length <= 5 && RegExp(r'^[a-z0-9]+$').hasMatch(ext)) {
+      if (ext.length <= 5 &&
+          !_ignoredWebExts.contains(ext) &&
+          RegExp(r'^[a-z0-9]+$').hasMatch(ext)) {
         return ext;
       }
     }
@@ -179,26 +204,28 @@ class MoodleItem {
         'dueText': dueText,
       };
 
-  factory MoodleItem.fromJson(Map<String, dynamic> json) => MoodleItem(
-        id: json['id']?.toString() ?? '',
-        courseId: json['courseId'] is int
-            ? json['courseId'] as int
-            : int.tryParse(json['courseId']?.toString() ?? '0') ?? 0,
-        title: json['title']?.toString() ?? json['name']?.toString() ?? '',
-        section:
-            json['section']?.toString() ?? json['sectionName']?.toString() ?? 'General',
-        type: json['type']?.toString() ?? 'resource',
-        url: json['url']?.toString() ?? '',
-        fileName: json['fileName']?.toString() ?? '',
-        fileExt: json['fileExt']?.toString() ?? '',
-        downloadable: (json['downloadable'] ?? json['isDownloadable']) == true,
-        sizeBytes: json['sizeBytes'] as int? ?? json['fileSize'] as int?,
-        isDownloaded: json['isDownloaded'] == true,
-        isNew: json['isNew'] == true,
-        localPath: json['localPath']?.toString(),
-        dueTimestamp: json['dueTimestamp'] as int?,
-        dueText: json['dueText']?.toString(),
-      );
+  factory MoodleItem.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id']?.toString().trim();
+    return MoodleItem(
+      id: (rawId != null && rawId.isNotEmpty) ? rawId : null,
+      courseId: _parseIntNullable(json['courseId']) ?? 0,
+      title: json['title']?.toString() ?? json['name']?.toString() ?? '',
+      section:
+          json['section']?.toString() ?? json['sectionName']?.toString() ?? 'General',
+      type: json['type']?.toString() ?? 'resource',
+      url: json['url']?.toString() ?? '',
+      fileName: json['fileName']?.toString() ?? '',
+      fileExt: json['fileExt']?.toString() ?? '',
+      downloadable: (json['downloadable'] ?? json['isDownloadable']) == true,
+      sizeBytes: _parseIntNullable(json['sizeBytes']) ??
+          _parseIntNullable(json['fileSize']),
+      isDownloaded: json['isDownloaded'] == true,
+      isNew: json['isNew'] == true,
+      localPath: json['localPath']?.toString(),
+      dueTimestamp: _parseIntNullable(json['dueTimestamp']),
+      dueText: json['dueText']?.toString(),
+    );
+  }
 
   static String formatFileSize(int? bytes) {
     if (bytes == null || bytes <= 0) return '';
@@ -278,9 +305,7 @@ class MoodleCourse {
       };
 
   factory MoodleCourse.fromJson(Map<String, dynamic> json) => MoodleCourse(
-        id: json['id'] is int
-            ? json['id'] as int
-            : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+        id: _parseIntNullable(json['id']) ?? 0,
         fullname:
             json['fullname']?.toString() ?? json['fullName']?.toString() ?? '',
         cleanName: json['cleanName']?.toString() ?? '',
@@ -291,9 +316,10 @@ class MoodleCourse {
         targetSubfolder: json['targetSubfolder']?.toString() ?? 'Aula',
         organizeBySection: json['organizeBySection'] != false,
         isHidden: json['isHidden'] == true,
-        linkedRamoId: json['linkedRamoId'] as int?,
+        linkedRamoId: _parseIntNullable(json['linkedRamoId']),
         items: (json['items'] as List? ?? [])
-            .map((e) => MoodleItem.fromJson(Map<String, dynamic>.from(e as Map)))
+            .whereType<Map>()
+            .map((e) => MoodleItem.fromJson(Map<String, dynamic>.from(e)))
             .toList(),
       );
 
@@ -309,17 +335,61 @@ class MoodleCourse {
     return name.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  static final RegExp _reservedWindowsNames = RegExp(
+    r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$',
+    caseSensitive: false,
+  );
+
   static String sanitizeFileName(String raw) {
     var clean = raw
         .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     clean = clean.replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
-    if (clean.isEmpty) return 'archivo';
-    if (clean.length > 140) {
-      clean = clean.substring(0, 140).trim();
+    if (clean.isEmpty || clean == '.' || clean == '..') return 'archivo';
+
+    String truncateStem(String stem, int maxLen) {
+      if (stem.length <= maxLen) {
+        return stem.replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
+      }
+      return stem.substring(0, maxLen).replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
     }
-    return clean;
+
+    final extMatch = RegExp(r'^(.+?)\.([a-zA-Z0-9]{1,8})$').firstMatch(clean);
+    if (clean.length > 120) {
+      if (extMatch != null) {
+        final ext = extMatch.group(2)!;
+        final suffix = '.$ext';
+        final maxStem = 120 - suffix.length;
+        final truncatedStem = truncateStem(extMatch.group(1)!, maxStem);
+        clean = truncatedStem.isEmpty ? 'archivo$suffix' : '$truncatedStem$suffix';
+      } else {
+        clean = truncateStem(clean, 120);
+      }
+    }
+
+    clean = clean.replaceAll(RegExp(r'^\.+|[.\s]+$'), '');
+    if (clean.isEmpty || clean == '.' || clean == '..') return 'archivo';
+
+    final dotIdx = clean.indexOf('.');
+    final baseName = (dotIdx >= 0 ? clean.substring(0, dotIdx) : clean).trim();
+    if (_reservedWindowsNames.hasMatch(baseName)) {
+      clean = '_$clean';
+      if (clean.length > 120) {
+        if (extMatch != null) {
+          final ext = extMatch.group(2)!;
+          final suffix = '.$ext';
+          final maxStem = 120 - suffix.length;
+          final dotAfterPrefix = clean.lastIndexOf('.');
+          final stem = dotAfterPrefix > 0 ? clean.substring(0, dotAfterPrefix) : clean;
+          final truncatedStem = truncateStem(stem, maxStem);
+          clean = truncatedStem.isEmpty ? '_archivo$suffix' : '$truncatedStem$suffix';
+        } else {
+          clean = truncateStem(clean, 120);
+        }
+      }
+    }
+    return clean.isEmpty ? 'archivo' : clean;
   }
 
   static String normalizeForMatch(String raw) {

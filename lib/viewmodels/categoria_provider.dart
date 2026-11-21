@@ -21,14 +21,15 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
 
   Future<void> cargarCategorias() async {
     try {
-      final data = await DatabaseHelper.instance.queryCategoriesBySubject(arg);
-      List<CategoriaEvaluacion> cats = [];
-      for (var catMap in data) {
-        var cat = CategoriaEvaluacion.fromMap(catMap);
-        final evsData = await DatabaseHelper.instance.queryEvaluationsByCategory(cat.id!);
-        cat.evaluaciones = evsData.map((e) => Evaluacion.fromMap(e)).toList();
-        cats.add(cat);
-      }
+      final grouped =
+          await DatabaseHelper.instance.queryCategoriesWithEvaluationsBySubject(arg);
+      if (!ref.mounted) return;
+      final cats = grouped.map((entry) {
+        final cat = CategoriaEvaluacion.fromMap(entry.category);
+        cat.evaluaciones =
+            entry.evaluations.map((e) => Evaluacion.fromMap(e)).toList();
+        return cat;
+      }).toList();
       state = cats;
     } catch (e) {
       debugPrint("Error al cargar categorias: $e");
@@ -44,20 +45,24 @@ class CategoriaNotifier extends Notifier<List<CategoriaEvaluacion>> {
     }
   }
 
-  Future<void> agregarCategoriaConEvaluaciones(CategoriaEvaluacion categoria, int numEvaluaciones) async {
+  Future<void> agregarCategoriaConEvaluaciones(
+    CategoriaEvaluacion categoria,
+    int numEvaluaciones,
+  ) async {
     try {
-      final idCategoria = await DatabaseHelper.instance.insertCategory(categoria.toMap());
-      if (numEvaluaciones > 0) {
-        for (int i = 0; i < numEvaluaciones; i++) {
-          final ev = Evaluacion(
-            idCategoria: idCategoria,
+      final evalRows = <Map<String, dynamic>>[
+        for (var i = 0; i < numEvaluaciones; i++)
+          Evaluacion(
+            idCategoria: 0,
             nombre: '${categoria.nombre} ${i + 1}',
-            porcentajePeso: null, // Assuming equal weight or formula driven
+            porcentajePeso: null,
             nota: null,
-          );
-          await DatabaseHelper.instance.insertEvaluation(ev.toMap());
-        }
-      }
+          ).toMap(),
+      ];
+      await DatabaseHelper.instance.insertCategoryWithEvaluations(
+        categoria.toMap(),
+        evalRows,
+      );
       await cargarCategorias();
     } catch (e) {
       debugPrint("Error al agregar categoria con evaluaciones: $e");

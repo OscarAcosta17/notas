@@ -105,7 +105,7 @@ class NotasVisualTokens extends ThemeExtension<NotasVisualTokens> {
       blurSigma: blurSigma,
       glassOpacity: glassOpacity,
       glassBorderOpacity: glassBorderOpacity,
-      passingColor: isDark ? const Color(0xFF4ADE80) : const Color(0xFF16A34A),
+      passingColor: isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D),
       failingColor: isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
       neutralColor: isDark ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280),
       accentColor: resolvedAccent,
@@ -242,6 +242,8 @@ class AppTheme {
       final bool accentIsLight = ThemeData.estimateBrightnessForColor(customTertiary) == Brightness.light;
       if (!isDark && accentIsLight) {
         onAccentContainer = Color.lerp(customTertiary, const Color(0xFF111217), 0.65)!;
+      } else if (!isDark && !accentIsLight) {
+        onAccentContainer = Color.lerp(customTertiary, const Color(0xFF0E0F13), 0.25)!;
       } else if (isDark && !accentIsLight) {
         onAccentContainer = Color.lerp(customTertiary, Colors.white, 0.72)!;
       } else {

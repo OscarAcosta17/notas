@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'aula_settings_service.dart' as aula_settings;
 import 'database_helper.dart';
+import 'secure_credential_store.dart';
 
 enum DriveSyncState {
   unconfigured,
@@ -163,7 +165,7 @@ class CloudSyncService {
     await prefs.remove(_gdriveLastErrorKey);
   }
 
-  static const List<String> _syncedPrefKeys = [
+  static final List<String> _syncedPrefKeys = [
     'isDarkMode',
     'useDynamicColor',
     'frostedGlassIntensity',
@@ -184,29 +186,7 @@ class CloudSyncService {
     'gridCrossAxisCount',
     'tertiaryColor',
     'last_semester_id',
-    'aula_token',
-    'aula_moodle_session',
-    'aula_sesskey',
-    'aula_user_name',
-    'aula_user_id',
-    'aula_course_folders',
-    'aula_course_subfolders',
-    'aula_course_org_sections',
-    'aula_hidden_courses',
-    'aula_course_ramo_links',
-    'aula_notify_new_files',
-    'aula_notify_deadlines',
-    'aula_notify_deadline_hours',
-    'settings_course_folders',
-    'settings_course_subfolders',
-    'settings_course_org_section',
-    'hidden_courses_json',
-    'settings_default_subfolder',
-    'settings_org_section',
-    'settings_skip_downloaded',
-    'settings_auto_export_links',
-    'settings_auto_export_forums',
-    'settings_preferred_extensions',
+    ...aula_settings.SettingsService.syncedPrefKeys,
   ];
 
   static Timer? _autoSyncTimer;
@@ -250,15 +230,18 @@ class CloudSyncService {
 
   static Future<CloudSyncConfig> getConfig() async {
     final prefs = await SharedPreferences.getInstance();
+    final githubToken = await SecureCredentialStore.read(_githubTokenKey);
+    final refreshToken = await SecureCredentialStore.read(_gdriveRefreshTokenKey);
+    final clientSecret = await SecureCredentialStore.read(_gdriveClientSecretKey);
     return CloudSyncConfig(
       folderPath: prefs.getString(_folderPathKey),
-      githubToken: prefs.getString(_githubTokenKey),
+      githubToken: githubToken,
       gistId: prefs.getString(_gistIdKey),
-      googleDriveRefreshToken: prefs.getString(_gdriveRefreshTokenKey),
+      googleDriveRefreshToken: refreshToken,
       googleDriveFolderId: prefs.getString(_gdriveFolderIdKey),
       googleDriveFileId: prefs.getString(_gdriveFileIdKey),
       googleDriveClientId: prefs.getString(_gdriveClientIdKey),
-      googleDriveClientSecret: prefs.getString(_gdriveClientSecretKey),
+      googleDriveClientSecret: clientSecret,
       googleDriveTokenUrl: prefs.getString(_gdriveTokenUrlKey),
       autoSyncEnabled: prefs.getBool(_autoSyncKey) ?? false,
       lastSyncIso: prefs.getString(_lastSyncKey),
@@ -285,11 +268,11 @@ class CloudSyncService {
     _cachedDriveTokenExpiresAtMs = 0;
 
     if (refreshToken == null || refreshToken.trim().isEmpty) {
-      await prefs.remove(_gdriveRefreshTokenKey);
+      await SecureCredentialStore.delete(_gdriveRefreshTokenKey);
       await prefs.remove(_gdriveFolderIdKey);
       await prefs.remove(_gdriveFileIdKey);
     } else {
-      await prefs.setString(_gdriveRefreshTokenKey, refreshToken.trim());
+      await SecureCredentialStore.write(_gdriveRefreshTokenKey, refreshToken.trim());
     }
 
     if (clientId != null) {
@@ -302,9 +285,9 @@ class CloudSyncService {
 
     if (clientSecret != null) {
       if (clientSecret.trim().isEmpty) {
-        await prefs.remove(_gdriveClientSecretKey);
+        await SecureCredentialStore.delete(_gdriveClientSecretKey);
       } else {
-        await prefs.setString(_gdriveClientSecretKey, clientSecret.trim());
+        await SecureCredentialStore.write(_gdriveClientSecretKey, clientSecret.trim());
       }
     }
 
@@ -326,9 +309,9 @@ class CloudSyncService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     if (token == null || token.trim().isEmpty) {
-      await prefs.remove(_githubTokenKey);
+      await SecureCredentialStore.delete(_githubTokenKey);
     } else {
-      await prefs.setString(_githubTokenKey, token.trim());
+      await SecureCredentialStore.write(_githubTokenKey, token.trim());
     }
     if (gistId != null && gistId.trim().isNotEmpty) {
       await prefs.setString(_gistIdKey, gistId.trim());
@@ -495,7 +478,7 @@ class CloudSyncService {
     }
   }
 
-  static Future<String> uploadToGist() async {
+  static Future<String> uploadToGist({bool allowRecreate = true}) async {
     final config = await getConfig();
     final token = config.githubToken?.trim();
     if (token == null || token.isEmpty) {
@@ -546,10 +529,10 @@ class CloudSyncService {
       if (res.statusCode == 401 || res.statusCode == 403) {
         throw Exception('Token sin permisos para escribir Gists (HTTP ${res.statusCode}).');
       }
-      if (res.statusCode == 404 && gistId != null) {
-        // Stored Gist ID no longer exists; recreate cleanly
+      if (res.statusCode == 404 && gistId != null && gistId.isNotEmpty && allowRecreate) {
+        // Stored Gist ID no longer exists; recreate cleanly once
         await setGithubCredentials(token: token, gistId: '');
-        return await uploadToGist();
+        return await uploadToGist(allowRecreate: false);
       }
       if (res.statusCode != 200 && res.statusCode != 201) {
         throw Exception('Error al subir a GitHub Gist (HTTP ${res.statusCode}).');
@@ -614,9 +597,12 @@ class CloudSyncService {
         final rawRes = await client
             .get(Uri.parse(entry['raw_url'].toString()), headers: _githubHeaders(token))
             .timeout(const Duration(seconds: 20));
-        if (rawRes.statusCode == 200) {
-          rawJson = rawRes.body;
+        if (rawRes.statusCode != 200) {
+          throw Exception(
+            'No se pudo descargar el contenido completo del Gist (HTTP ${rawRes.statusCode}).',
+          );
         }
+        rawJson = utf8.decode(rawRes.bodyBytes);
       }
 
       if (rawJson == null || rawJson.trim().isEmpty) {
@@ -882,114 +868,119 @@ class CloudSyncService {
       const encoder = JsonEncoder.withIndent('  ');
       final jsonContent = encoder.convert(bundle);
 
-      Future<http.Response> sendMultipart({
-        required String? targetFileId,
-        required String parentFolderId,
-        required String bearerToken,
-      }) {
-        final boundary = 'notas_drive_${DateTime.now().millisecondsSinceEpoch}';
-        final metadata = <String, dynamic>{
-          'name': bundleFileName,
-          'mimeType': 'application/json',
-          'properties': {
-            'vault': driveVaultName,
-            'path': bundleFileName,
-          },
-        };
-        if (targetFileId == null) {
-          metadata['parents'] = [parentFolderId];
-        }
+      final driveClient = http.Client();
+      try {
+        Future<http.Response> sendMultipart({
+          required String? targetFileId,
+          required String parentFolderId,
+          required String bearerToken,
+        }) {
+          final boundary = 'notas_drive_${DateTime.now().millisecondsSinceEpoch}';
+          final metadata = <String, dynamic>{
+            'name': bundleFileName,
+            'mimeType': 'application/json',
+            'properties': {
+              'vault': driveVaultName,
+              'path': bundleFileName,
+            },
+          };
+          if (targetFileId == null) {
+            metadata['parents'] = [parentFolderId];
+          }
 
-        final payload = StringBuffer()
-          ..write('--$boundary\r\n')
-          ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
-          ..write(jsonEncode(metadata))
-          ..write('\r\n--$boundary\r\n')
-          ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
-          ..write(jsonContent)
-          ..write('\r\n--$boundary--');
+          final payload = StringBuffer()
+            ..write('--$boundary\r\n')
+            ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+            ..write(jsonEncode(metadata))
+            ..write('\r\n--$boundary\r\n')
+            ..write('Content-Type: application/json; charset=UTF-8\r\n\r\n')
+            ..write(jsonContent)
+            ..write('\r\n--$boundary--');
 
-        final headers = {
-          'Authorization': 'Bearer $bearerToken',
-          'Content-Type': 'multipart/related; boundary=$boundary',
-        };
+          final headers = {
+            'Authorization': 'Bearer $bearerToken',
+            'Content-Type': 'multipart/related; boundary=$boundary',
+          };
 
-        final bodyBytes = utf8.encode(payload.toString());
-        if (targetFileId != null) {
-          return http
-              .patch(
+          final bodyBytes = utf8.encode(payload.toString());
+          if (targetFileId != null) {
+            return driveClient
+                .patch(
+                  Uri.parse(
+                    'https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=multipart&fields=id',
+                  ),
+                  headers: headers,
+                  body: bodyBytes,
+                )
+                .timeout(const Duration(seconds: 25));
+          }
+          return driveClient
+              .post(
                 Uri.parse(
-                  'https://www.googleapis.com/upload/drive/v3/files/$targetFileId?uploadType=multipart&fields=id',
+                  'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
                 ),
                 headers: headers,
                 body: bodyBytes,
               )
               .timeout(const Duration(seconds: 25));
         }
-        return http
-            .post(
-              Uri.parse(
-                'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-              ),
-              headers: headers,
-              body: bodyBytes,
-            )
-            .timeout(const Duration(seconds: 25));
-      }
 
-      var res = await sendMultipart(
-        targetFileId: fileId,
-        parentFolderId: folderId,
-        bearerToken: accessToken,
-      );
-
-      // Retry once if cached access token just expired
-      if (res.statusCode == 401) {
-        _cachedDriveAccessToken = null;
-        _cachedDriveTokenExpiresAtMs = 0;
-        accessToken = await refreshGoogleDriveAccessToken();
-        res = await sendMultipart(
+        var res = await sendMultipart(
           targetFileId: fileId,
           parentFolderId: folderId,
           bearerToken: accessToken,
         );
-      }
 
-      // If cached fileId or folderId was deleted manually in Drive, re-verify and recreate cleanly
-      if (res.statusCode == 404) {
-        await prefs.remove(_gdriveFileIdKey);
-        folderId = await getOrCreateDriveVaultFolderId(accessToken, verify: true);
-        res = await sendMultipart(
-          targetFileId: null,
-          parentFolderId: folderId,
-          bearerToken: accessToken,
-        );
-      }
+        // Retry once if cached access token just expired
+        if (res.statusCode == 401) {
+          _cachedDriveAccessToken = null;
+          _cachedDriveTokenExpiresAtMs = 0;
+          accessToken = await refreshGoogleDriveAccessToken();
+          res = await sendMultipart(
+            targetFileId: fileId,
+            parentFolderId: folderId,
+            bearerToken: accessToken,
+          );
+        }
 
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        _cachedDriveAccessToken = null;
-        _cachedDriveTokenExpiresAtMs = 0;
-        final msg =
-            'Sin permisos o sesión expirada en Google Drive (HTTP ${res.statusCode}). Renueva tu token.';
-        await markDriveTokenExpired(msg);
-        throw GoogleDriveTokenExpiredException(msg);
-      }
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw Exception(
-          'Error al subir copia a Google Drive (HTTP ${res.statusCode}).',
-        );
-      }
+        // If cached fileId or folderId was deleted manually in Drive, re-verify and recreate cleanly
+        if (res.statusCode == 404) {
+          await prefs.remove(_gdriveFileIdKey);
+          folderId = await getOrCreateDriveVaultFolderId(accessToken, verify: true);
+          res = await sendMultipart(
+            targetFileId: null,
+            parentFolderId: folderId,
+            bearerToken: accessToken,
+          );
+        }
 
-      final decoded =
-          jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
-      final savedFileId = decoded['id']?.toString() ?? fileId ?? '';
-      if (savedFileId.isNotEmpty) {
-        await prefs.setString(_gdriveFileIdKey, savedFileId);
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          _cachedDriveAccessToken = null;
+          _cachedDriveTokenExpiresAtMs = 0;
+          final msg =
+              'Sin permisos o sesión expirada en Google Drive (HTTP ${res.statusCode}). Renueva tu token.';
+          await markDriveTokenExpired(msg);
+          throw GoogleDriveTokenExpiredException(msg);
+        }
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw Exception(
+            'Error al subir copia a Google Drive (HTTP ${res.statusCode}).',
+          );
+        }
+
+        final decoded =
+            jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+        final savedFileId = decoded['id']?.toString() ?? fileId ?? '';
+        if (savedFileId.isNotEmpty) {
+          await prefs.setString(_gdriveFileIdKey, savedFileId);
+        }
+        await _clearDriveError();
+        await _recordLastSync();
+        await refreshStatusNotifier();
+        return savedFileId;
+      } finally {
+        driveClient.close();
       }
-      await _clearDriveError();
-      await _recordLastSync();
-      await refreshStatusNotifier();
-      return savedFileId;
     } on GoogleDriveTokenExpiredException {
       rethrow;
     } catch (e) {
@@ -1017,54 +1008,59 @@ class CloudSyncService {
         );
       }
 
-      var res = await http
-          .get(
-            Uri.parse(
-              'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
-            ),
-            headers: {'Authorization': 'Bearer $accessToken'},
-          )
-          .timeout(const Duration(seconds: 25));
-
-      if (res.statusCode == 401) {
-        _cachedDriveAccessToken = null;
-        _cachedDriveTokenExpiresAtMs = 0;
-        accessToken = await refreshGoogleDriveAccessToken();
-        res = await http
+      final driveClient = http.Client();
+      try {
+        var res = await driveClient
             .get(
               Uri.parse(
-                'https://www.googleapis.com/drive/v3/files/$fileId?alt=media&acknowledgeAbuse=true',
+                'https://www.googleapis.com/drive/v3/files/$fileId?alt=media',
               ),
               headers: {'Authorization': 'Bearer $accessToken'},
             )
             .timeout(const Duration(seconds: 25));
-      }
 
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        _cachedDriveAccessToken = null;
-        _cachedDriveTokenExpiresAtMs = 0;
-        final msg =
-            'Sesión de Google Drive expirada (HTTP ${res.statusCode}). Renueva tu Refresh Token.';
-        await markDriveTokenExpired(msg);
-        throw GoogleDriveTokenExpiredException(msg);
-      }
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw Exception(
-          'No se pudo descargar de Google Drive (HTTP ${res.statusCode}).',
-        );
-      }
+        if (res.statusCode == 401) {
+          _cachedDriveAccessToken = null;
+          _cachedDriveTokenExpiresAtMs = 0;
+          accessToken = await refreshGoogleDriveAccessToken();
+          res = await driveClient
+              .get(
+                Uri.parse(
+                  'https://www.googleapis.com/drive/v3/files/$fileId?alt=media',
+                ),
+                headers: {'Authorization': 'Bearer $accessToken'},
+              )
+              .timeout(const Duration(seconds: 25));
+        }
 
-      final rawJson = utf8.decode(res.bodyBytes);
-      if (rawJson.trim().isEmpty) {
-        throw Exception('El archivo en Google Drive está vacío.');
-      }
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          _cachedDriveAccessToken = null;
+          _cachedDriveTokenExpiresAtMs = 0;
+          final msg =
+              'Sesión de Google Drive expirada (HTTP ${res.statusCode}). Renueva tu Refresh Token.';
+          await markDriveTokenExpired(msg);
+          throw GoogleDriveTokenExpiredException(msg);
+        }
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw Exception(
+            'No se pudo descargar de Google Drive (HTTP ${res.statusCode}).',
+          );
+        }
 
-      final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
-      await prefs.setString(_gdriveFileIdKey, fileId);
-      await applySyncBundle(decoded);
-      await _clearDriveError();
-      await refreshStatusNotifier();
-      return decoded;
+        final rawJson = utf8.decode(res.bodyBytes);
+        if (rawJson.trim().isEmpty) {
+          throw Exception('El archivo en Google Drive está vacío.');
+        }
+
+        final decoded = jsonDecode(rawJson) as Map<String, dynamic>;
+        await prefs.setString(_gdriveFileIdKey, fileId);
+        await applySyncBundle(decoded);
+        await _clearDriveError();
+        await refreshStatusNotifier();
+        return decoded;
+      } finally {
+        driveClient.close();
+      }
     } on GoogleDriveTokenExpiredException {
       rethrow;
     } catch (e) {

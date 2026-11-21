@@ -1,1 +1,6 @@
 -keep class com.example.notas.R$raw { *; }
+-keep class com.example.notas.AppWidgetProvider { *; }
+-keep class com.example.notas.HorarioWidgetProvider { *; }
+-keep class com.example.notas.AgendaWidgetService { *; }
+-keep class com.example.notas.HorarioWidgetService { *; }
+-keep class com.dexterous.flutterlocalnotifications.** { *; }

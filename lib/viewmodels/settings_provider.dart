@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/notification_service.dart';
 
 class SettingsState {
   final bool isDarkMode;
@@ -103,6 +106,60 @@ class SettingsState {
       tertiaryColor: clearTertiaryColor ? null : (tertiaryColor ?? this.tertiaryColor),
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SettingsState &&
+          runtimeType == other.runtimeType &&
+          isDarkMode == other.isDarkMode &&
+          useDynamicColor == other.useDynamicColor &&
+          frostedGlassIntensity == other.frostedGlassIntensity &&
+          bottomNavStyle == other.bottomNavStyle &&
+          navLabelMode == other.navLabelMode &&
+          semesterSelectorStyle == other.semesterSelectorStyle &&
+          enableHorizontalSwipe == other.enableHorizontalSwipe &&
+          surfaceStyle == other.surfaceStyle &&
+          cardRadiusStyle == other.cardRadiusStyle &&
+          subjectColorStyle == other.subjectColorStyle &&
+          appIcon == other.appIcon &&
+          hapticsEnabled == other.hapticsEnabled &&
+          escalaNotas == other.escalaNotas &&
+          subjectViewMode == other.subjectViewMode &&
+          isCompactList == other.isCompactList &&
+          gridCrossAxisCount == other.gridCrossAxisCount &&
+          tertiaryColor == other.tertiaryColor &&
+          notificationsEnabled == other.notificationsEnabled &&
+          minutosAntesClase == other.minutosAntesClase &&
+          horasAntesEvaluacion == other.horasAntesEvaluacion &&
+          selectedClassSound == other.selectedClassSound &&
+          selectedEvalSound == other.selectedEvalSound;
+
+  @override
+  int get hashCode => Object.hashAll([
+        isDarkMode,
+        useDynamicColor,
+        frostedGlassIntensity,
+        bottomNavStyle,
+        navLabelMode,
+        semesterSelectorStyle,
+        enableHorizontalSwipe,
+        surfaceStyle,
+        cardRadiusStyle,
+        subjectColorStyle,
+        appIcon,
+        hapticsEnabled,
+        escalaNotas,
+        subjectViewMode,
+        isCompactList,
+        gridCrossAxisCount,
+        tertiaryColor,
+        notificationsEnabled,
+        minutosAntesClase,
+        horasAntesEvaluacion,
+        selectedClassSound,
+        selectedEvalSound,
+      ]);
 }
 
 class SettingsNotifier extends Notifier<SettingsState> {
@@ -128,6 +185,8 @@ class SettingsNotifier extends Notifier<SettingsState> {
   static const _isCompactListKey = 'isCompactList';
   static const _gridCrossAxisKey = 'gridCrossAxisCount';
   static const _tertiaryColorKey = 'tertiaryColor';
+
+  bool _hasMutatedLocally = false;
 
   @override
   SettingsState build() {
@@ -157,8 +216,9 @@ class SettingsNotifier extends Notifier<SettingsState> {
     );
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> _loadSettings({bool force = false}) async {
     final prefs = await SharedPreferences.getInstance();
+    if (!ref.mounted || (!force && _hasMutatedLocally)) return;
     state = SettingsState(
       isDarkMode: prefs.getBool(_darkModeKey) ?? false,
       useDynamicColor: prefs.getBool(_dynamicColorKey) ?? false,
@@ -185,7 +245,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
     );
   }
 
-  Future<void> reloadSettings() => _loadSettings();
+  Future<void> reloadSettings() => _loadSettings(force: true);
 
   void _triggerAutoSyncIfHooked() {
     if (CloudSyncService.isAutoSyncHookAttached) {
@@ -194,6 +254,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 
   Future<void> _setBoolPref(String key, bool value, SettingsState nextState) async {
+    _hasMutatedLocally = true;
     state = nextState;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
@@ -201,6 +262,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 
   Future<void> _setStringPref(String key, String value, SettingsState nextState) async {
+    _hasMutatedLocally = true;
     state = nextState;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, value);
@@ -247,33 +309,51 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> setEscalaNotas(String escala) async =>
       _setStringPref(_escalaKey, escala, state.copyWith(escalaNotas: escala));
-  
+
   Future<void> setMinutosAntesClase(int minutos) async {
+    _hasMutatedLocally = true;
+    state = state.copyWith(minutosAntesClase: minutos);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_minClaseKey, minutos);
-    state = state.copyWith(minutosAntesClase: minutos);
+    _triggerAutoSyncIfHooked();
+    unawaited(NotificationService.rescheduleAllFromDatabase());
   }
 
   Future<void> setHorasAntesEvaluacion(int horas) async {
+    _hasMutatedLocally = true;
+    state = state.copyWith(horasAntesEvaluacion: horas);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_hrsEvalKey, horas);
-    state = state.copyWith(horasAntesEvaluacion: horas);
+    _triggerAutoSyncIfHooked();
+    unawaited(NotificationService.rescheduleAllFromDatabase());
   }
-  
+
   Future<void> setClassSound(String soundName) async {
+    _hasMutatedLocally = true;
+    state = state.copyWith(selectedClassSound: soundName);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_classSoundKey, soundName);
-    state = state.copyWith(selectedClassSound: soundName);
+    _triggerAutoSyncIfHooked();
+    unawaited(NotificationService.rescheduleAllFromDatabase());
   }
 
   Future<void> setEvalSound(String soundName) async {
+    _hasMutatedLocally = true;
+    state = state.copyWith(selectedEvalSound: soundName);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_evalSoundKey, soundName);
-    state = state.copyWith(selectedEvalSound: soundName);
+    _triggerAutoSyncIfHooked();
+    unawaited(NotificationService.rescheduleAllFromDatabase());
   }
 
-  Future<void> setNotificationsEnabled(bool enabled) async =>
-      _setBoolPref(_notifEnabledKey, enabled, state.copyWith(notificationsEnabled: enabled));
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await _setBoolPref(
+      _notifEnabledKey,
+      enabled,
+      state.copyWith(notificationsEnabled: enabled),
+    );
+    unawaited(NotificationService.rescheduleAllFromDatabase());
+  }
 
   Future<void> setSubjectViewMode(String mode) async =>
       _setStringPref(_viewModeKey, mode, state.copyWith(subjectViewMode: mode));
@@ -282,20 +362,23 @@ class SettingsNotifier extends Notifier<SettingsState> {
       _setBoolPref(_isCompactListKey, isCompact, state.copyWith(isCompactList: isCompact));
 
   Future<void> setGridCrossAxisCount(int count) async {
+    _hasMutatedLocally = true;
+    state = state.copyWith(gridCrossAxisCount: count);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_gridCrossAxisKey, count);
-    state = state.copyWith(gridCrossAxisCount: count);
     _triggerAutoSyncIfHooked();
   }
 
   Future<void> setTertiaryColor(int? color) async {
+    _hasMutatedLocally = true;
+    state = color == null
+        ? state.copyWith(clearTertiaryColor: true)
+        : state.copyWith(tertiaryColor: color);
     final prefs = await SharedPreferences.getInstance();
     if (color == null) {
       await prefs.remove(_tertiaryColorKey);
-      state = state.copyWith(clearTertiaryColor: true);
     } else {
       await prefs.setInt(_tertiaryColorKey, color);
-      state = state.copyWith(tertiaryColor: color);
     }
     _triggerAutoSyncIfHooked();
   }

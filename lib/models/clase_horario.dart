@@ -30,14 +30,16 @@ class ClaseHorario {
   }
 
   factory ClaseHorario.fromMap(Map<String, dynamic> map) {
+    final rawDay = (map['dia_semana'] as num?)?.toInt() ?? 1;
+    final safeDay = (rawDay >= 1 && rawDay <= 7) ? rawDay : 1;
     return ClaseHorario(
-      id: map['id'] as int?,
-      semesterId: map['semester_id'] as int,
-      subjectName: map['subject_name'] as String,
-      diaSemana: map['dia_semana'] as int,
-      bloque: map['bloque'] as int,
-      sala: map['sala'] as String,
-      paralelo: map['paralelo'] as String,
+      id: (map['id'] as num?)?.toInt(),
+      semesterId: (map['semester_id'] as num?)?.toInt() ?? 0,
+      subjectName: (map['subject_name'] ?? '').toString(),
+      diaSemana: safeDay,
+      bloque: (map['bloque'] as num?)?.toInt() ?? 1,
+      sala: (map['sala'] ?? '').toString(),
+      paralelo: (map['paralelo'] ?? '').toString(),
     );
   }
 }

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -29,7 +28,7 @@ class AulaView extends StatefulWidget {
   State<AulaView> createState() => _AulaViewState();
 }
 
-class _AulaViewState extends State<AulaView> {
+class _AulaViewState extends State<AulaView> with AutomaticKeepAliveClientMixin {
   final SettingsService _settings = SettingsService.instance;
   final MoodleService _moodle = MoodleService();
   late final DownloaderService _downloader =
@@ -42,6 +41,12 @@ class _AulaViewState extends State<AulaView> {
   final Set<int> _sizingStartedIds = {};
 
   List<MoodleCourse> _courses = [];
+  int _coursesRevision = 0;
+  List<MoodleCourse>? _cachedVisibleCourses;
+  int _cachedRevision = -1;
+  String? _cachedQuery;
+  bool? _cachedShowHidden;
+
   List<Ramo> _semesterRamos = [];
   int? _activeSemesterId;
   List<String> _existingSubfolders = [];
@@ -64,6 +69,11 @@ class _AulaViewState extends State<AulaView> {
   int _dlTotal = 0;
   String _dlLabel = '';
   String? _statusBanner;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  void _invalidateCoursesCache() => _coursesRevision++;
 
   @override
   void initState() {
@@ -101,7 +111,55 @@ class _AulaViewState extends State<AulaView> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _moodle.dispose();
     super.dispose();
+  }
+
+  Future<void> _performLogout() async {
+    await _moodle.logout();
+    if (!mounted) return;
+    setState(() {
+      _courses = [];
+      _invalidateCoursesCache();
+      _expandedCourseIds.clear();
+      _collapsedSections.clear();
+      _sizingStartedIds.clear();
+      _wideSelectedCourseId = null;
+      _statusBanner = null;
+      _searchCtrl.clear();
+      _searchQuery = '';
+      _dlCurrent = 0;
+      _dlTotal = 0;
+      _dlLabel = '';
+    });
+  }
+
+  Future<void> _openLocalFileWithGuard(String path) async {
+    if (SettingsService.isDangerousFile(path)) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Archivo potencialmente peligroso'),
+          content: Text(
+            'El archivo "${p.basename(path)}" es ejecutable o un script y podría ejecutar código en tu dispositivo. ¿Deseas abrirlo de todas formas?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Abrir de todos modos'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+      await _settings.openLocalFile(path, allowDangerous: true);
+      return;
+    }
+    await _settings.openLocalFile(path);
   }
 
   Future<void> _initScreen() async {
@@ -109,8 +167,8 @@ class _AulaViewState extends State<AulaView> {
     await _moodle.loadSession();
 
     if (!_moodle.isAuthenticated) {
+      await _settings.load();
       if (mounted) setState(() => _isInitializing = false);
-      unawaited(_settings.load());
       return;
     }
 
@@ -128,6 +186,7 @@ class _AulaViewState extends State<AulaView> {
       if (mounted) {
         setState(() {
           _courses = cached;
+          _invalidateCoursesCache();
           _wideSelectedCourseId ??=
               cached.isNotEmpty ? cached.first.id : null;
           _isInitializing = false;
@@ -166,9 +225,16 @@ class _AulaViewState extends State<AulaView> {
             _activeSemesterId = sem.id;
             _semesterRamos = ramos;
             for (final c in _courses) {
-              c.linkedRamoId = links[c.id] ??
-                  MoodleCourse.findMatchingRamo(c, ramos)?.id;
+              if (links.containsKey(c.id)) {
+                final stored = links[c.id];
+                c.linkedRamoId = stored == SettingsService.unlinkedRamoSentinel
+                    ? null
+                    : stored;
+              } else {
+                c.linkedRamoId = MoodleCourse.findMatchingRamo(c, ramos)?.id;
+              }
             }
+            _invalidateCoursesCache();
           });
         }
       }
@@ -191,13 +257,19 @@ class _AulaViewState extends State<AulaView> {
       c.targetSubfolder = _settings.getCourseSubfolder(c.id);
       c.organizeBySection = _settings.getCourseOrganizeBySection(c.id);
       c.isHidden = _settings.hiddenCourseIds.contains(c.id);
-      c.linkedRamoId =
-          links[c.id] ?? MoodleCourse.findMatchingRamo(c, _semesterRamos)?.id;
+      if (links.containsKey(c.id)) {
+        final stored = links[c.id];
+        c.linkedRamoId =
+            stored == SettingsService.unlinkedRamoSentinel ? null : stored;
+      } else {
+        c.linkedRamoId = MoodleCourse.findMatchingRamo(c, _semesterRamos)?.id;
+      }
     }
   }
 
   Future<void> _scanAula({bool silentIfCached = false}) async {
-    if (_isScanning || !_moodle.isAuthenticated) return;
+    if (_isScanning || _isDownloading || !_moodle.isAuthenticated) return;
+    _sizingStartedIds.clear();
     setState(() {
       _isScanning = true;
       if (!silentIfCached) _statusBanner = 'Conectando con Aula USM...';
@@ -215,6 +287,7 @@ class _AulaViewState extends State<AulaView> {
       if (mounted) {
         setState(() {
           _courses = fetchedCourses;
+          _invalidateCoursesCache();
           _wideSelectedCourseId ??=
               fetchedCourses.isNotEmpty ? fetchedCourses.first.id : null;
         });
@@ -264,6 +337,7 @@ class _AulaViewState extends State<AulaView> {
       if (mounted) {
         setState(() {
           _courses = fetchedCourses;
+          _invalidateCoursesCache();
           _isScanning = false;
           _statusBanner = null;
         });
@@ -295,10 +369,7 @@ class _AulaViewState extends State<AulaView> {
         content: Text(message),
         action: SnackBarAction(
           label: 'Reconectar',
-          onPressed: () async {
-            await _moodle.logout();
-            if (mounted) setState(() {});
-          },
+          onPressed: _performLogout,
         ),
       ),
     );
@@ -458,7 +529,7 @@ class _AulaViewState extends State<AulaView> {
   }
 
   Future<void> _startDownload() async {
-    if (_isDownloading) return;
+    if (_isDownloading || _isScanning) return;
     setState(() {
       _isDownloading = true;
       _dlCurrent = 0;
@@ -521,11 +592,19 @@ class _AulaViewState extends State<AulaView> {
   }
 
   List<MoodleCourse> get _visibleCourses {
-    return _courses
+    if (_cachedVisibleCourses != null &&
+        _cachedRevision == _coursesRevision &&
+        _cachedQuery == _searchQuery &&
+        _cachedShowHidden == _showHiddenCourses) {
+      return _cachedVisibleCourses!;
+    }
+    final q = _searchQuery.isEmpty
+        ? ''
+        : MoodleCourse.normalizeForMatch(_searchQuery);
+    final computed = _courses
         .where((c) => _showHiddenCourses || !c.isHidden)
         .where((c) {
-          if (_searchQuery.isEmpty) return true;
-          final q = MoodleCourse.normalizeForMatch(_searchQuery);
+          if (q.isEmpty) return true;
           if (MoodleCourse.normalizeForMatch(c.cleanName).contains(q) ||
               MoodleCourse.normalizeForMatch(c.shortname).contains(q)) {
             return true;
@@ -535,6 +614,11 @@ class _AulaViewState extends State<AulaView> {
               MoodleCourse.normalizeForMatch(it.section).contains(q));
         })
         .toList();
+    _cachedVisibleCourses = computed;
+    _cachedRevision = _coursesRevision;
+    _cachedQuery = _searchQuery;
+    _cachedShowHidden = _showHiddenCourses;
+    return computed;
   }
 
   List<MoodleItem> _filteredItemsForCourse(MoodleCourse course) {
@@ -574,6 +658,7 @@ class _AulaViewState extends State<AulaView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (_isInitializing) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -704,7 +789,7 @@ class _AulaViewState extends State<AulaView> {
                         switch (_selectedAuthTab) {
                           0 => Platform.isAndroid
                               ? 'Inicia sesión normalmente con tu cuenta institucional USM (Microsoft SSO). Capturaremos tu sesión al instante.'
-                              : 'En Windows usa Token de WebService o Cookie MoodleSession desde tu navegador.',
+                              : 'En esta plataforma usa Token de WebService o Cookie MoodleSession desde tu navegador.',
                           1 =>
                             'Conexión rápida vía API REST de Moodle. Útil si obtuviste tu clave personal en Preferencias de Aula.',
                           _ =>
@@ -804,7 +889,7 @@ class _AulaViewState extends State<AulaView> {
     var ok = false;
     try {
       if (_selectedAuthTab == 0) {
-        if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+        if (Platform.isAndroid) {
           final res = await Navigator.of(context).push<bool>(
             MaterialPageRoute(
               builder: (_) => WebViewLoginScreen(moodle: _moodle),
@@ -944,7 +1029,8 @@ class _AulaViewState extends State<AulaView> {
               _buildNotificationsBell(),
               IconButton(
                 tooltip: 'Actualizar Aula USM',
-                onPressed: _isScanning ? null : () => _scanAula(),
+                onPressed:
+                    (_isScanning || _isDownloading) ? null : () => _scanAula(),
                 icon: _isScanning
                     ? const SizedBox(
                         width: 18,
@@ -1094,7 +1180,9 @@ class _AulaViewState extends State<AulaView> {
                 _buildNotificationsBell(),
                 IconButton(
                   tooltip: 'Actualizar Aula USM',
-                  onPressed: _isScanning ? null : () => _scanAula(),
+                  onPressed: (_isScanning || _isDownloading)
+                      ? null
+                      : () => _scanAula(),
                   icon: _isScanning
                       ? const SizedBox(
                           width: 18,
@@ -1727,10 +1815,13 @@ class _AulaViewState extends State<AulaView> {
                     ),
                     TextButton.icon(
                       onPressed: () {
+                        final cleanUrl =
+                            MoodleService.stripSensitiveQueryParams(course.url);
+                        if (cleanUrl.isEmpty) return;
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => AuthenticatedWebViewerScreen(
-                              url: course.url,
+                              url: cleanUrl,
                               title: course.cleanName,
                               cookie: _moodle.cookie,
                             ),
@@ -1811,13 +1902,35 @@ class _AulaViewState extends State<AulaView> {
                     child: Row(
                       children: [
                         if (downloadableCount > 0)
-                          Checkbox(
-                            visualDensity: VisualDensity.compact,
-                            value: secItems
-                                .where((i) => i.downloadable)
-                                .every((i) => i.isSelected),
-                            onChanged: (val) =>
-                                _toggleSectionSelection(secItems, val == true),
+                          Builder(
+                            builder: (_) {
+                              final downloadableItems =
+                                  secItems.where((i) => i.downloadable).toList();
+                              final eligible = downloadableItems
+                                  .where((i) =>
+                                      !(_settings.skipAlreadyDownloaded &&
+                                          i.isDownloaded))
+                                  .toList();
+                              final allEligibleSelected = eligible.isNotEmpty &&
+                                  eligible.every((i) => i.isSelected);
+                              final someSelected = downloadableItems
+                                  .any((i) => i.isSelected);
+                              return Checkbox(
+                                visualDensity: VisualDensity.compact,
+                                tristate: true,
+                                value: eligible.isNotEmpty
+                                    ? (allEligibleSelected
+                                        ? true
+                                        : (someSelected ? null : false))
+                                    : (someSelected ? null : false),
+                                onChanged: (_) {
+                                  final select = eligible.isNotEmpty
+                                      ? !allEligibleSelected
+                                      : false;
+                                  _toggleSectionSelection(secItems, select);
+                                },
+                              );
+                            },
                           )
                         else
                           Padding(
@@ -1869,6 +1982,7 @@ class _AulaViewState extends State<AulaView> {
 
   Widget _buildItemRow(MoodleCourse course, MoodleItem item) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final (icon, tint) = switch (item.type.toLowerCase()) {
       'resource' => (Icons.insert_drive_file_rounded, cs.primary),
       'folder' => (Icons.folder_zip_rounded, Colors.amber.shade700),
@@ -1885,7 +1999,7 @@ class _AulaViewState extends State<AulaView> {
         if (item.isDownloaded &&
             item.localPath != null &&
             item.localPath!.isNotEmpty) {
-          _settings.openLocalFile(item.localPath!);
+          _openLocalFileWithGuard(item.localPath!);
         } else if (item.downloadable) {
           setState(() => item.isSelected = !item.isSelected);
         } else {
@@ -1938,8 +2052,8 @@ class _AulaViewState extends State<AulaView> {
                       if (item.isDownloaded)
                         _badgeChip(
                           'En carpeta',
-                          Colors.green.withValues(alpha: 0.16),
-                          Colors.green.shade800,
+                          Colors.green.withValues(alpha: isDark ? 0.22 : 0.16),
+                          isDark ? Colors.green.shade200 : Colors.green.shade800,
                         )
                       else if (item.isNew && item.downloadable)
                         _badgeChip(
@@ -1983,11 +2097,12 @@ class _AulaViewState extends State<AulaView> {
   }
 
   void _openItemViewer(MoodleItem item) {
-    if (item.url.isEmpty) return;
+    final cleanUrl = MoodleService.stripSensitiveQueryParams(item.url);
+    if (cleanUrl.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AuthenticatedWebViewerScreen(
-          url: item.url,
+          url: cleanUrl,
           title: item.title,
           cookie: _moodle.cookie,
         ),
@@ -2100,167 +2215,47 @@ class _AulaViewState extends State<AulaView> {
   // ===========================================================================
 
   Future<void> _openCourseConfigSheet(MoodleCourse course) async {
-    final folderCtrl = TextEditingController(text: course.obsidianFolder);
-    final subCtrl = TextEditingController(text: course.targetSubfolder);
-    var orgSection = course.organizeBySection;
-    var hidden = course.isHidden;
-    var selectedRamoId = course.linkedRamoId;
-
-    await showModalBottomSheet<void>(
+    final result = await showModalBottomSheet<
+        ({
+          String folder,
+          String subfolder,
+          bool orgSection,
+          bool hidden,
+          int? ramoId,
+        })>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              18,
-              20,
-              MediaQuery.of(ctx).viewInsets.bottom + 24,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    course.cleanName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: folderCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Carpeta del ramo en Vault / Descargas',
-                      prefixIcon: Icon(Icons.folder_rounded),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  if (_existingSubfolders.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 36,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: _existingSubfolders.map((sf) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ActionChip(
-                              label: Text(sf, style: const TextStyle(fontSize: 11.5)),
-                              onPressed: () {
-                                folderCtrl.text = sf;
-                                setSheetState(() {});
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: subCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Subcarpeta interna (vacío = raíz del ramo)',
-                      hintText: 'Aula',
-                      prefixIcon: Icon(Icons.subdirectory_arrow_right_rounded),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Organizar en subcarpetas por sección'),
-                    value: orgSection,
-                    onChanged: (v) => setSheetState(() => orgSection = v),
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Ocultar curso de la lista principal'),
-                    value: hidden,
-                    onChanged: (v) => setSheetState(() => hidden = v),
-                  ),
-                  const Divider(height: 20),
-                  const Text(
-                    'Vínculo con NotasApp',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<int?>(
-                    initialValue: _semesterRamos.any((r) => r.id == selectedRamoId)
-                        ? selectedRamoId
-                        : null,
-                    decoration: const InputDecoration(
-                      labelText: 'Ramo vinculado en este semestre',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      const DropdownMenuItem<int?>(
-                        value: null,
-                        child: Text('Sin vincular'),
-                      ),
-                      ..._semesterRamos.map(
-                        (r) => DropdownMenuItem<int?>(
-                          value: r.id,
-                          child: Text(r.nombre),
-                        ),
-                      ),
-                    ],
-                    onChanged: (val) => setSheetState(() => selectedRamoId = val),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancelar'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () async {
-                            final folder = folderCtrl.text.trim();
-                            final sub = subCtrl.text.trim();
-                            course.obsidianFolder = folder.isNotEmpty
-                                ? folder
-                                : course.cleanName;
-                            course.targetSubfolder = sub;
-                            course.organizeBySection = orgSection;
-                            course.isHidden = hidden;
-                            course.linkedRamoId = selectedRamoId;
-
-                            await _settings.setCourseConfig(
-                              course.id,
-                              folder: course.obsidianFolder,
-                              subfolder: sub,
-                              organizeBySection: orgSection,
-                            );
-                            await _settings.toggleCourseHidden(course.id, hidden);
-                            await _settings.setCourseRamoLink(
-                                course.id, selectedRamoId);
-                            await _moodle.enrichItemsWithLocalStatus(
-                                [course], _settings);
-                            if (ctx.mounted) Navigator.pop(ctx);
-                            if (mounted) setState(() {});
-                          },
-                          child: const Text('Guardar'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+      builder: (_) => _CourseConfigSheet(
+        course: course,
+        existingSubfolders: _existingSubfolders,
+        semesterRamos: _semesterRamos,
       ),
     );
+    if (result == null || !mounted) return;
+
+    course.obsidianFolder = result.folder.isNotEmpty
+        ? MoodleCourse.sanitizeFileName(result.folder)
+        : MoodleCourse.sanitizeFileName(course.cleanName);
+    course.targetSubfolder = result.subfolder;
+    course.organizeBySection = result.orgSection;
+    course.isHidden = result.hidden;
+    course.linkedRamoId = result.ramoId;
+
+    await _settings.setCourseConfig(
+      course.id,
+      folder: course.obsidianFolder,
+      subfolder: result.subfolder,
+      organizeBySection: result.orgSection,
+    );
+    await _settings.toggleCourseHidden(course.id, result.hidden);
+    await _settings.setCourseRamoLink(course.id, result.ramoId);
+    await _moodle.enrichItemsWithLocalStatus([course], _settings);
+    if (mounted) {
+      setState(() {
+        _invalidateCoursesCache();
+      });
+    }
   }
 
   Future<void> _openAccountSettingsSheet() async {
@@ -2308,13 +2303,8 @@ class _AulaViewState extends State<AulaView> {
                       : 'Conectado con Cookie de Sesión'),
                   trailing: TextButton.icon(
                     onPressed: () async {
-                      await _moodle.logout();
                       if (ctx.mounted) Navigator.pop(ctx);
-                      if (mounted) {
-                        setState(() {
-                          _courses.clear();
-                        });
-                      }
+                      await _performLogout();
                     },
                     icon: Icon(Icons.logout_rounded, color: cs.error),
                     label: Text('Salir', style: TextStyle(color: cs.error)),
@@ -2429,7 +2419,7 @@ class _AulaViewState extends State<AulaView> {
                             '${h.course} · ${MoodleItem.formatFileSize(h.sizeBytes)}',
                             style: const TextStyle(fontSize: 11.5),
                           ),
-                          onTap: () => _settings.openLocalFile(h.savedPath),
+                          onTap: () => _openLocalFileWithGuard(h.savedPath),
                         ),
                       ),
               ],
@@ -2478,6 +2468,172 @@ class _AulaViewState extends State<AulaView> {
           fontSize: 10.5,
           fontWeight: FontWeight.w700,
           color: fg,
+        ),
+      ),
+    );
+  }
+}
+
+class _CourseConfigSheet extends StatefulWidget {
+  final MoodleCourse course;
+  final List<String> existingSubfolders;
+  final List<Ramo> semesterRamos;
+
+  const _CourseConfigSheet({
+    required this.course,
+    required this.existingSubfolders,
+    required this.semesterRamos,
+  });
+
+  @override
+  State<_CourseConfigSheet> createState() => _CourseConfigSheetState();
+}
+
+class _CourseConfigSheetState extends State<_CourseConfigSheet> {
+  late final TextEditingController _folderCtrl =
+      TextEditingController(text: widget.course.obsidianFolder);
+  late final TextEditingController _subCtrl =
+      TextEditingController(text: widget.course.targetSubfolder);
+  late bool _orgSection = widget.course.organizeBySection;
+  late bool _hidden = widget.course.isHidden;
+  late int? _selectedRamoId = widget.course.linkedRamoId;
+
+  @override
+  void dispose() {
+    _folderCtrl.dispose();
+    _subCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        18,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.course.cleanName,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _folderCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Carpeta del ramo en Vault / Descargas',
+                prefixIcon: Icon(Icons.folder_rounded),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (widget.existingSubfolders.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 36,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: widget.existingSubfolders.map((sf) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        label: Text(sf, style: const TextStyle(fontSize: 11.5)),
+                        onPressed: () {
+                          setState(() => _folderCtrl.text = sf);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _subCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Subcarpeta interna (vacío = raíz del ramo)',
+                hintText: 'Aula',
+                prefixIcon: Icon(Icons.subdirectory_arrow_right_rounded),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Organizar en subcarpetas por sección'),
+              value: _orgSection,
+              onChanged: (v) => setState(() => _orgSection = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Ocultar curso de la lista principal'),
+              value: _hidden,
+              onChanged: (v) => setState(() => _hidden = v),
+            ),
+            const Divider(height: 20),
+            const Text(
+              'Vínculo con NotasApp',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int?>(
+              initialValue:
+                  widget.semesterRamos.any((r) => r.id == _selectedRamoId)
+                      ? _selectedRamoId
+                      : null,
+              decoration: const InputDecoration(
+                labelText: 'Ramo vinculado en este semestre',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<int?>(
+                  value: null,
+                  child: Text('Sin vincular'),
+                ),
+                ...widget.semesterRamos.map(
+                  (r) => DropdownMenuItem<int?>(
+                    value: r.id,
+                    child: Text(r.nombre),
+                  ),
+                ),
+              ],
+              onChanged: (val) => setState(() => _selectedRamoId = val),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(context, (
+                        folder: _folderCtrl.text.trim(),
+                        subfolder: _subCtrl.text.trim(),
+                        orgSection: _orgSection,
+                        hidden: _hidden,
+                        ramoId: _selectedRamoId,
+                      ));
+                    },
+                    child: const Text('Guardar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

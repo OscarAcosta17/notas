@@ -1,12 +1,32 @@
 # NotasApp - Gestión Universitaria
 
-Aplicación móvil minimalista, 100% offline, diseñada para que estudiantes universitarios gestionen sus ramos, calificaciones y simulen qué notas necesitan para aprobar sus asignaturas. Construida con **Flutter**, **Riverpod**, y **SQLite** (Clean Architecture).
+Aplicación multiplataforma (**Android** y **Windows PC**), *local-first* y sin servidores intermedios, diseñada para que estudiantes universitarios gestionen sus ramos, simulen calificaciones, organicen su horario y agenda, sincronicen su progreso en la nube y descarguen material directamente desde **Aula USM** hacia **Obsidian**. Construida con **Flutter**, **Riverpod 3.x** y **SQLite** (`sqflite` / `sqflite_common_ffi`).
 
 ---
 
 ## 📥 Descargar APK / Instaladores (Versiones)
 
 Encuentra a continuación el historial de versiones de la aplicación y sus instaladores oficiales para **Android (.apk)** y **Windows PC (.exe instalador / .zip portable)**.
+
+### [v1.3.2] - Optimización General, Precisión Matemática y Mejoras de Estabilidad
+**Fecha**: Noviembre 2026
+
+**📦 Enlace de Descarga:** [NotasApp-v1.3.2.apk](https://github.com/OscarAcosta17/notas/releases/download/v1.3.2/NotasApp-v1.3.2.apk) · [NotasApp-Setup-v1.3.2.exe](https://github.com/OscarAcosta17/notas/releases/download/v1.3.2/NotasApp-Setup-v1.3.2.exe) · [NotasApp-Windows-v1.3.2.zip](https://github.com/OscarAcosta17/notas/releases/download/v1.3.2/NotasApp-Windows-v1.3.2.zip)
+
+#### ✨ Novedades y Mejoras:
+* **🧮 Precisión en el Motor Matemático y Editor de Fórmulas:**
+  * Soporte ampliado en fórmulas personalizadas para funciones `min(...)` y `max(...)` con múltiples argumentos anidados, validación en vivo antes de guardar y manejo mejorado de variables posicionales (`e1`, `e2`, ...).
+  * Cálculo refinado en promedios geométricos (incluyendo evaluaciones calificadas con `0.0`) y distribución automática del peso restante cuando coexisten evaluaciones con y sin ponderación explícita.
+* **🏛️ Estabilidad y Rendimiento en Aula USM:**
+  * Descarga de archivos optimizada por *streaming* directo a disco para reducir el uso de memoria en documentos pesados, selección por sección con estado intermedio y opción para desvincular manualmente un curso de su Ramo asociado.
+  * Mejoras de fluidez al filtrar recursos, exportar índices Markdown para Obsidian y sincronizar entregas con la Agenda.
+* **📅 Horario, Agenda, Widgets y Almacenamiento:**
+  * Consultas SQLite optimizadas para carga rápida de la Agenda, persistencia del semestre activo en widgets nativos y reordenamiento fluido de asignaturas tanto en Lista como en Cuadrícula.
+  * Exportación de calendarios `.ics` mejorada conforme al estándar iCalendar, reprogramación automática de recordatorios al ajustar tiempos de anticipación y gestión de archivos temporales en una carpeta de caché dedicada.
+* **🛡️ Confiabilidad y Protección de Datos:**
+  * Protección mejorada de sesiones locales en el dispositivo, validación de integridad al importar copias de seguridad SQLite (`.db`) con recuperación automática ante archivos inválidos y limpieza automática de datos sensibles al generar diagnósticos de error.
+
+---
 
 ### [v1.3.1] - Port Completo y Fiel de Aula-Scrapt + Indicador Vivo de Google Drive
 **Fecha**: Noviembre 2026
@@ -327,15 +347,17 @@ Encuentra a continuación el historial de versiones de la aplicación y sus inst
    ```
 
 ## 🛠 Tecnologías Principales
-- **Framework**: Flutter.
-- **Gestión de Estado**: Riverpod (v3.x).
-- **Base de Datos**: SQLite (mediante la librería `sqflite`).
-- **Iconografía**: Generado mediante `flutter_launcher_icons`.
+- **Framework**: Flutter (Android & Windows Desktop).
+- **Gestión de Estado**: Riverpod (`flutter_riverpod` v3.x).
+- **Base de Datos**: SQLite (`sqflite` en Android y `sqflite_common_ffi` en Windows/Linux, esquema v7).
+- **Iconografía**: 6 estilos seleccionables en `AndroidManifest.xml` y `flutter_launcher_icons`.
 
 ## 📁 Estructura del Proyecto
-- `lib/models`: Entidades de la base de datos y la lógica matemática pura (Ramo, Evaluación, CategoriaEvaluacion).
+- `lib/models`: Entidades de dominio y motor matemático (`Ramo`, `CategoriaEvaluacion`, `Evaluacion`, `Semestre`, `ClaseHorario`, `MoodleCourse`, `MoodleItem`).
 - `lib/theme`: Sistema de diseño Android 17 / Material 3 Expressive (`NotasVisualTokens`, `AppTheme` y componentes reutilizables de cristal).
-- `lib/viewmodels`: Providers de Riverpod manejando el estado, la inyección de dependencias y el acceso asíncrono a SQLite.
-- `lib/views`: Interfaz de Usuario y widgets (Scaffolds, listados, modales de ingreso).
-- `lib/services`: Control de la conexión y esquemas de Base de Datos.
-- `releases/`: Directorio donde se almacenan y distribuyen los APKs de manera pública.
+- `lib/utils`: Utilidades canónicas compartidas (`schedule_blocks.dart`).
+- `lib/viewmodels`: Notifiers de Riverpod con sincronización hacia SQLite y `SharedPreferences`.
+- `lib/views`: Vistas principales (`HomeView`, `SemestreDetailView`, `RamoDetailView`, `HorarioView`, `AgendaView`, `AulaView`), ajustes y diálogos modales.
+- `lib/services`: SQLite (`DatabaseHelper`), almacenamiento seguro de sesión, gestión de caché (`AppCacheService`), sincronización en la nube (`CloudSyncService`), Aula USM (`aula_*.dart`), notificaciones, widgets nativos, exportadores (`.ics`, `.png`), diagnóstico (`BugReportService`) y actualizador OTA (`UpdaterService`).
+- `test`: Suite de pruebas automatizadas (`widget_test.dart`, `math_engine_test.dart`, `database_migration_test.dart`, `moodle_and_security_test.dart`, `ics_and_cache_test.dart`).
+- `releases/`: Directorio donde se almacenan instaladores locales de referencia.

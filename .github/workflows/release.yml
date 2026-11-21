@@ -41,8 +41,23 @@ jobs:
 
       - name: Run static analysis and tests
         run: |
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter analyze
           flutter test
+
+      - name: Configure Android release signing (if secrets provided)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+            echo "RELEASE_STORE_FILE=release.keystore" >> "$GITHUB_ENV"
+            echo "RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+          fi
 
       - name: Build release APK
         run: flutter build apk --release
@@ -73,6 +88,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Run unit tests on Windows
+        run: flutter test
 
       - name: Build Windows release
         run: flutter build windows --release
@@ -153,6 +171,10 @@ jobs:
               f.write(body + "\n")
           EOF
 
+      - name: Generate SHA-256 checksums
+        run: |
+          sha256sum "NotasApp-${{ github.ref_name }}.apk" "NotasApp-Setup-${{ github.ref_name }}.exe" "NotasApp-Windows-${{ github.ref_name }}.zip" > SHA256SUMS.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -162,5 +184,6 @@ jobs:
             NotasApp-${{ github.ref_name }}.apk
             NotasApp-Setup-${{ github.ref_name }}.exe
             NotasApp-Windows-${{ github.ref_name }}.zip
+            SHA256SUMS.txt
           draft: false
           prerelease: false

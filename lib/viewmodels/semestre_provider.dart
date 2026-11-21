@@ -15,6 +15,7 @@ class SemestreNotifier extends Notifier<List<Semestre>> {
   Future<void> cargarSemestres() async {
     try {
       final data = await DatabaseHelper.instance.queryAllSemesters();
+      if (!ref.mounted) return;
       state = data.map((e) => Semestre.fromMap(e)).toList();
     } catch (e) {
       debugPrint("Error al cargar semestres: $e");

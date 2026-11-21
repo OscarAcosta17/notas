@@ -17,6 +17,7 @@ class EditEvaluacionDialog extends ConsumerStatefulWidget {
 class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
   late final TextEditingController _nombreController;
   late final TextEditingController _pesoController;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -36,14 +37,27 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
     final nombre = _nombreController.text.trim();
     final pesoStr = _pesoController.text.trim();
 
-    if (nombre.isEmpty) return;
+    if (nombre.isEmpty) {
+      setState(() => _errorMessage = 'El nombre es obligatorio.');
+      return;
+    }
 
-    double? peso = pesoStr.isNotEmpty ? double.tryParse(pesoStr.replaceAll(',', '.')) : null;
+    double? peso;
+    if (pesoStr.isNotEmpty) {
+      peso = double.tryParse(pesoStr.replaceAll(',', '.'));
+      if (peso == null || !peso.isFinite || peso <= 0 || peso > 100) {
+        setState(() => _errorMessage = 'El peso debe estar entre 0 y 100%.');
+        return;
+      }
+    }
 
-    widget.evaluacion.nombre = nombre;
-    widget.evaluacion.porcentajePeso = peso;
+    final updated = widget.evaluacion.copyWith(
+      nombre: nombre,
+      porcentajePeso: peso,
+      clearPorcentajePeso: peso == null,
+    );
 
-    ref.read(categoriaProvider(widget.ramoId).notifier).actualizarEvaluacion(widget.evaluacion);
+    ref.read(categoriaProvider(widget.ramoId).notifier).actualizarEvaluacion(updated);
     Navigator.pop(context);
   }
 
@@ -54,7 +68,7 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge)),
       backgroundColor: scheme.surfaceContainerHigh,
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -73,8 +87,18 @@ class _EditEvaluacionDialogState extends ConsumerState<EditEvaluacionDialog> {
             TextField(
               controller: _pesoController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Peso de la nota (%)'),
+              decoration: const InputDecoration(
+                labelText: 'Peso de la nota (%)',
+                hintText: 'Dejar vacío si es equitativo',
+              ),
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _errorMessage!,
+                style: TextStyle(color: scheme.error, fontSize: 12.5),
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

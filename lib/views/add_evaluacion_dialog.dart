@@ -29,8 +29,9 @@ class _AddEvaluacionDialogState extends ConsumerState<AddEvaluacionDialog> {
             children: [
               TextFormField(
                 decoration: const InputDecoration(labelText: 'Nombre (ej: Certamen 1)'),
-                validator: (val) => val == null || val.isEmpty ? 'Requerido' : null,
-                onSaved: (val) => _nombre = val!,
+                validator: (val) =>
+                    val == null || val.trim().isEmpty ? 'Requerido' : null,
+                onSaved: (val) => _nombre = val!.trim(),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -40,14 +41,20 @@ class _AddEvaluacionDialogState extends ConsumerState<AddEvaluacionDialog> {
                 ),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (val) {
-                  if (val != null && val.isNotEmpty && double.tryParse(val.replaceAll(',', '.')) == null) {
-                    return 'Debe ser número válido';
+                  final trimmed = val?.trim() ?? '';
+                  if (trimmed.isEmpty) return null;
+                  final parsed = double.tryParse(trimmed.replaceAll(',', '.'));
+                  if (parsed == null || !parsed.isFinite || parsed <= 0 || parsed > 100) {
+                    return 'Debe ser un número entre 0 y 100';
                   }
                   return null;
                 },
                 onSaved: (val) {
-                  if (val != null && val.trim().isNotEmpty) {
-                    _pesoEspecifico = double.parse(val.replaceAll(',', '.'));
+                  final trimmed = val?.trim() ?? '';
+                  if (trimmed.isNotEmpty) {
+                    _pesoEspecifico = double.parse(trimmed.replaceAll(',', '.'));
+                  } else {
+                    _pesoEspecifico = null;
                   }
                 },
               ),

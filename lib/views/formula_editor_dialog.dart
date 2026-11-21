@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/categoria_evaluacion.dart';
 import '../theme/app_theme.dart';
 
 class FormulaEditorDialog extends StatefulWidget {
@@ -81,7 +82,7 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
     return Expanded(
       flex: flex,
       child: Padding(
-        padding: const EdgeInsets.all(3.0),
+        padding: const EdgeInsets.all(2.5),
         child: SizedBox(
           height: 42,
           child: ElevatedButton(
@@ -107,6 +108,9 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.visualTokens;
+    final validationError = _formula.trim().isEmpty
+        ? null
+        : CategoriaEvaluacion.validateCustomFormula(_formula);
 
     final List<String> variables;
     if (widget.existingVariables.isNotEmpty) {
@@ -118,10 +122,11 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
     }
 
     return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.radiusExtraLarge)),
       backgroundColor: scheme.surfaceContainerHigh,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(18.0),
+        padding: const EdgeInsets.all(14.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -133,19 +138,28 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 19, color: scheme.onSurface),
                 ),
                 IconButton(
+                  tooltip: 'Cerrar',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   icon: const Icon(Icons.close_rounded),
                   onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerLowest,
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                border: Border.all(color: scheme.primary.withValues(alpha: 0.45), width: 1.5),
+                border: Border.all(
+                  color: validationError != null
+                      ? scheme.error
+                      : scheme.primary.withValues(alpha: 0.45),
+                  width: 1.5,
+                ),
               ),
               child: SingleChildScrollView(
                 controller: _scrollController,
@@ -161,10 +175,24 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
                 ),
               ),
             ),
+            if (validationError != null) ...[
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  validationError,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             if (variables.isNotEmpty) ...[
               SizedBox(
-                height: 40,
+                height: 44,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: variables.length,
@@ -191,16 +219,16 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
               children: [
                 Row(
                   children: [
-                    _buildKey('sqrt(', color: Colors.deepPurpleAccent),
-                    _buildKey('^', color: Colors.deepPurpleAccent),
-                    _buildKey('abs(', color: Colors.deepPurpleAccent),
+                    _buildKey('sqrt(', color: const Color(0xFF5B21B6)),
+                    _buildKey('^', color: const Color(0xFF5B21B6)),
+                    _buildKey('abs(', color: const Color(0xFF5B21B6)),
                     _buildKey('C', color: tokens.failingColor, onPressed: _onClear),
                   ],
                 ),
                 Row(
                   children: [
-                    _buildKey('min(', color: Colors.blueAccent),
-                    _buildKey('max(', color: Colors.blueAccent),
+                    _buildKey('min(', color: const Color(0xFF1D4ED8)),
+                    _buildKey('max(', color: const Color(0xFF1D4ED8)),
                     _buildKey(','),
                     _buildKey('⌫', onPressed: _onBackspace),
                   ],
@@ -246,7 +274,11 @@ class _FormulaEditorDialogState extends State<FormulaEditorDialog> {
                       foregroundColor: scheme.onPrimary,
                       flex: 2,
                       onPressed: () {
-                        Navigator.pop(context, _formula);
+                        if (_formula.trim().isNotEmpty &&
+                            CategoriaEvaluacion.validateCustomFormula(_formula) != null) {
+                          return;
+                        }
+                        Navigator.pop(context, _formula.trim());
                       },
                     ),
                   ],

@@ -13,8 +13,8 @@ class Semestre {
 
   factory Semestre.fromMap(Map<String, dynamic> map) {
     return Semestre(
-      id: map['id'],
-      nombre: map['name'],
+      id: (map['id'] as num?)?.toInt(),
+      nombre: (map['name'] ?? '').toString(),
     );
   }
 }

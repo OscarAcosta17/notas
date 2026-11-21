@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/categoria_evaluacion.dart';
 import '../models/evaluacion.dart';
 import '../models/ramo.dart';
-import '../services/home_widget_service.dart';
 import '../services/notification_service.dart';
+import '../services/widget_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/expressive_widgets.dart';
 import '../viewmodels/categoria_provider.dart';
@@ -84,27 +85,58 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
     );
   }
 
-  Widget _buildNotasTab(BuildContext context, List<dynamic> categorias) {
+  Future<bool> _confirmDelete(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) async {
+    final res = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    return res == true;
+  }
+
+  Widget _buildNotasTab(BuildContext context, List<CategoriaEvaluacion> categorias) {
     final notaActual = widget.ramo.calcularNotaActual();
     final scheme = Theme.of(context).colorScheme;
     final tokens = context.visualTokens;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final promCache = <int, double?>{};
+    double evaluado = 0.0;
+    for (var i = 0; i < categorias.length; i++) {
+      final c = categorias[i];
+      final prom = c.calcularPromedio();
+      promCache[i] = prom;
+      if (prom != null) {
+        evaluado += c.porcentajeTotal;
+      }
+    }
+    final hasAnyGrade = promCache.values.any((v) => v != null);
+
     Color notaColor = notaActual >= widget.ramo.notaAprobacion
         ? tokens.passingColor
         : tokens.failingColor;
-    if (notaActual == 0.0) notaColor = tokens.neutralColor;
+    if (!hasAnyGrade && notaActual == 0.0) notaColor = tokens.neutralColor;
 
     final heroTint = Color.alphaBlend(
       notaColor.withValues(alpha: isDark ? 0.12 : 0.07),
       isDark ? scheme.surfaceContainerLow : scheme.surfaceContainerLowest,
     );
-    double evaluado = 0.0;
-    for (final c in categorias) {
-      if (c.calcularPromedio() != null) {
-        evaluado += (c.porcentajeTotal as num).toDouble();
-      }
-    }
     final evaluadoClamped = evaluado.clamp(0.0, 100.0);
 
     return Column(
@@ -201,9 +233,13 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                   itemCount: categorias.length,
                   itemBuilder: (context, index) {
                     final cat = categorias[index];
-                    final promedioCat = cat.calcularPromedio() ?? 0.0;
-                    final bool catFailed = cat.notaAprobacion != null && promedioCat < cat.notaAprobacion!;
-                    final Color catPromColor = catFailed ? tokens.failingColor : tokens.passingColor;
+                    final promedioCat = promCache[index];
+                    final bool catFailed = promedioCat != null &&
+                        cat.notaAprobacion != null &&
+                        promedioCat < cat.notaAprobacion!;
+                    final Color catPromColor = promedioCat == null
+                        ? tokens.neutralColor
+                        : (catFailed ? tokens.failingColor : tokens.passingColor);
                     final rowSurface = isDark ? scheme.surfaceContainer : scheme.surfaceContainerLowest;
 
                     return Container(
@@ -258,7 +294,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                   borderRadius: BorderRadius.circular(AppTheme.radiusFull),
                                 ),
                                 child: Text(
-                                  promedioCat.toStringAsFixed(2),
+                                  promedioCat?.toStringAsFixed(2) ?? '--',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 15,
@@ -269,6 +305,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                               ),
                               const SizedBox(width: 4),
                               IconButton(
+                                tooltip: 'Editar grupo de evaluación',
                                 icon: Icon(Icons.edit_outlined, color: scheme.onSurfaceVariant, size: 20),
                                 visualDensity: VisualDensity.compact,
                                 onPressed: () {
@@ -282,10 +319,21 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                 },
                               ),
                               IconButton(
+                                tooltip: 'Eliminar grupo de evaluación',
                                 icon: Icon(Icons.delete_outline_rounded, color: scheme.onSurfaceVariant, size: 20),
                                 visualDensity: VisualDensity.compact,
-                                onPressed: () {
-                                  ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarCategoria(cat.id!);
+                                onPressed: () async {
+                                  if (cat.id == null) return;
+                                  final confirmed = await _confirmDelete(
+                                    context,
+                                    title: 'Eliminar grupo',
+                                    message: '¿Eliminar "${cat.nombre}" y todas sus evaluaciones?',
+                                  );
+                                  if (confirmed && mounted) {
+                                    await ref
+                                        .read(categoriaProvider(widget.ramo.id!).notifier)
+                                        .eliminarCategoria(cat.id!);
+                                  }
                                 },
                               ),
                             ],
@@ -301,6 +349,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                           ...cat.evaluaciones.map((ev) {
                             final isDropped = cat.droppedEvaluacionId == ev.id;
                             return Container(
+                              key: ev.id != null ? ValueKey(ev.id) : null,
                               margin: const EdgeInsets.only(bottom: 8),
                               padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
                               decoration: BoxDecoration(
@@ -355,10 +404,21 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                                     child: GradeInputField(ramoId: widget.ramo.id!, evaluacion: ev),
                                   ),
                                   IconButton(
+                                    tooltip: 'Eliminar evaluación',
                                     icon: Icon(Icons.close_rounded, color: scheme.onSurfaceVariant, size: 18),
                                     visualDensity: VisualDensity.compact,
-                                    onPressed: () {
-                                      ref.read(categoriaProvider(widget.ramo.id!).notifier).eliminarEvaluacion(ev.id!);
+                                    onPressed: () async {
+                                      if (ev.id == null) return;
+                                      final confirmed = await _confirmDelete(
+                                        context,
+                                        title: 'Eliminar evaluación',
+                                        message: '¿Eliminar "${ev.nombre}"?',
+                                      );
+                                      if (confirmed && mounted) {
+                                        await ref
+                                            .read(categoriaProvider(widget.ramo.id!).notifier)
+                                            .eliminarEvaluacion(ev.id!);
+                                      }
                                     },
                                   ),
                                 ],
@@ -460,7 +520,7 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                     context: context,
                     initialTime: ev.fecha != null ? TimeOfDay.fromDateTime(ev.fecha!) : TimeOfDay.now(),
                   );
-                  if (pickedTime != null) {
+                  if (pickedTime != null && context.mounted) {
                     final finalDateTime = DateTime(
                       pickedDate.year,
                       pickedDate.month,
@@ -468,13 +528,17 @@ class _RamoDetailViewState extends ConsumerState<RamoDetailView> {
                       pickedTime.hour,
                       pickedTime.minute,
                     );
-                    ev.fecha = finalDateTime;
-                    await ref.read(categoriaProvider(widget.ramo.id!).notifier).actualizarEvaluacion(ev);
+                    final updatedEval = ev.copyWith(fecha: finalDateTime);
+                    await ref
+                        .read(categoriaProvider(widget.ramo.id!).notifier)
+                        .actualizarEvaluacion(updatedEval);
 
-                    // Notificación local 1 día antes
-                    NotificationService.scheduleEvaluationReminder(ev, widget.ramo.nombre);
-                    // Actualizar Widget
-                    HomeWidgetService.updateWidget();
+                    // Notificación local y actualización de widget
+                    await NotificationService.scheduleEvaluationReminder(
+                      updatedEval,
+                      widget.ramo.nombre,
+                    );
+                    await WidgetService.updateAgendaWidget();
 
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(

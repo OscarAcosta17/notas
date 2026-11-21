@@ -130,9 +130,14 @@ class FrostedAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   Widget _buildBar(ThemeData theme, Color base) {
+    final tokens = theme.extension<NotasVisualTokens>();
+    final isSolid = tokens?.frostedGlassIntensity == 'solido';
+    final alpha = isSolid
+        ? 1.0
+        : (tintColor != null ? 0.92 : (tokens?.glassOpacity ?? 0.72));
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: base.withValues(alpha: tintColor != null ? 0.92 : theme.extension<NotasVisualTokens>()?.glassOpacity ?? 0.72),
+        color: base.withValues(alpha: alpha),
         border: Border(
           bottom: BorderSide(
             color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35),

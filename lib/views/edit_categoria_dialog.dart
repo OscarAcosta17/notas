@@ -24,6 +24,7 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
   String? _customFormula;
   late bool _dropLowest;
   late final TextEditingController _formulaController;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -51,21 +52,59 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
     final porcentajeStr = _porcentajeController.text.trim();
     final notaStr = _notaController.text.trim();
 
-    if (nombre.isEmpty || porcentajeStr.isEmpty) return;
+    if (nombre.isEmpty || porcentajeStr.isEmpty) {
+      setState(() => _errorMessage = 'Ingresa un nombre y porcentaje válido.');
+      return;
+    }
 
-    double? porcentaje = double.tryParse(porcentajeStr.replaceAll(',', '.'));
-    double? nota = notaStr.isNotEmpty ? double.tryParse(notaStr.replaceAll(',', '.')) : null;
+    final porcentaje = double.tryParse(porcentajeStr.replaceAll(',', '.'));
+    final nota = notaStr.isNotEmpty
+        ? double.tryParse(notaStr.replaceAll(',', '.'))
+        : null;
 
-    if (porcentaje == null || porcentaje <= 0) return;
+    if (porcentaje == null || !porcentaje.isFinite || porcentaje <= 0 || porcentaje > 100) {
+      setState(() => _errorMessage = 'El porcentaje debe ser mayor a 0 y hasta 100%.');
+      return;
+    }
+    if (notaStr.isNotEmpty && (nota == null || !nota.isFinite || nota < 0)) {
+      setState(() => _errorMessage = 'La nota mínima debe ser un número válido.');
+      return;
+    }
 
-    widget.categoria.nombre = nombre;
-    widget.categoria.porcentajeTotal = porcentaje;
-    widget.categoria.notaAprobacion = nota;
-    widget.categoria.averageType = _averageType;
-    widget.categoria.customFormula = _averageType == 'Personalizada' ? _customFormula : null;
-    widget.categoria.dropLowest = _dropLowest;
+    final allCats = ref.read(categoriaProvider(widget.ramoId));
+    final otherSum = allCats
+        .where((c) => c.id != widget.categoria.id)
+        .fold<double>(0.0, (s, c) => s + c.porcentajeTotal);
+    final remaining = (100.0 - otherSum).clamp(0.0, 100.0);
+    if (porcentaje > remaining + 0.0001) {
+      setState(() {
+        _errorMessage =
+            'La suma total supera el 100% (máximo disponible: ${remaining.toStringAsFixed(1)}%).';
+      });
+      return;
+    }
 
-    ref.read(categoriaProvider(widget.ramoId).notifier).actualizarCategoria(widget.categoria);
+    if (_averageType == 'Personalizada') {
+      final formulaErr =
+          CategoriaEvaluacion.validateCustomFormula(_customFormula ?? '');
+      if (formulaErr != null) {
+        setState(() => _errorMessage = 'Fórmula inválida: $formulaErr');
+        return;
+      }
+    }
+
+    final updated = widget.categoria.copyWith(
+      nombre: nombre,
+      porcentajeTotal: porcentaje,
+      notaAprobacion: nota,
+      clearNotaAprobacion: nota == null,
+      averageType: _averageType,
+      customFormula: _averageType == 'Personalizada' ? _customFormula : null,
+      clearCustomFormula: _averageType != 'Personalizada',
+      dropLowest: _dropLowest,
+    );
+
+    ref.read(categoriaProvider(widget.ramoId).notifier).actualizarCategoria(updated);
     Navigator.pop(context);
   }
 
@@ -166,6 +205,13 @@ class _EditCategoriaDialogState extends ConsumerState<EditCategoriaDialog> {
                 });
               },
             ),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _errorMessage!,
+                style: TextStyle(color: scheme.error, fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

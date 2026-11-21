@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -61,6 +61,58 @@ class BugReportService {
 
   static final List<CapturedErrorLog> _memoryLogs = [];
   static bool _hooksInstalled = false;
+  static Future<void> _writeQueue = Future<void>.value();
+
+  /// Redacts tokens, session cookies, and local OS usernames before persisting or reporting logs.
+  static String redactSensitiveText(String input) {
+    var out = input;
+    out = out.replaceAllMapped(
+      RegExp(
+        '((?:ws)?token|sesskey)\\s*=\\s*[^&\\s"\'<>]+',
+        caseSensitive: false,
+      ),
+      (m) => '${m[1]}=[REDACTED]',
+    );
+    out = out.replaceAllMapped(
+      RegExp(
+        '(MoodleSession)\\s*=\\s*[^;\\s"\'<>]+',
+        caseSensitive: false,
+      ),
+      (m) => '${m[1]}=[REDACTED]',
+    );
+    out = out.replaceAllMapped(
+      RegExp(
+        '(refresh_token["\']?\\s*[:=]\\s*["\']?)[^"\'\\s,}]+',
+        caseSensitive: false,
+      ),
+      (m) => '${m[1]}[REDACTED]',
+    );
+    out = out.replaceAll(
+      RegExp(r'Bearer\s+[A-Za-z0-9._\-/+=]+', caseSensitive: false),
+      'Bearer [REDACTED]',
+    );
+    out = out.replaceAll(
+      RegExp(r'\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+\b'),
+      '[GITHUB_TOKEN_REDACTED]',
+    );
+    out = out.replaceAll(
+      RegExp(r'\bgithub_pat_[A-Za-z0-9_]+\b'),
+      '[GITHUB_TOKEN_REDACTED]',
+    );
+    out = out.replaceAll(
+      RegExp(r'\b1//[A-Za-z0-9_\-]{10,}\b'),
+      '[GOOGLE_TOKEN_REDACTED]',
+    );
+    out = out.replaceAll(
+      RegExp(r'[A-Za-z]:\\Users\\[^\\\/\r\n]+', caseSensitive: false),
+      r'C:\Users\<USER>',
+    );
+    out = out.replaceAllMapped(
+      RegExp(r'/(Users|home)/[^/\s\r\n]+'),
+      (m) => '/${m[1]}/<USER>',
+    );
+    return out;
+  }
 
   /// Installs global Flutter UI and async platform error hooks once.
   static void initErrorHooks() {
@@ -74,19 +126,23 @@ class BugReportService {
       } else {
         FlutterError.presentError(details);
       }
-      recordError(
+      unawaited(recordError(
         details.exceptionAsString(),
         details.stack?.toString() ?? '',
         source: 'FlutterUI',
-      );
+      ));
     };
 
+    final previousPlatformError = PlatformDispatcher.instance.onError;
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-      recordError(
+      unawaited(recordError(
         error.toString(),
         stack.toString(),
         source: 'AsyncPlatform',
-      );
+      ));
+      if (previousPlatformError != null) {
+        return previousPlatformError(error, stack);
+      }
       return false;
     };
   }
@@ -96,12 +152,21 @@ class BugReportService {
     String error,
     String stackTrace, {
     String source = 'App',
-  }) async {
+  }) {
+    final redactedError = redactSensitiveText(error.trim());
+    final cleanError = redactedError.length > 800
+        ? '${redactedError.substring(0, 800)}... [truncado]'
+        : redactedError;
+    final redactedStack = redactSensitiveText(stackTrace.trim());
+    final cleanStack = redactedStack.length > 2000
+        ? '${redactedStack.substring(0, 2000)}\n... [truncado]'
+        : redactedStack;
+
     final entry = CapturedErrorLog(
       timestampIso: DateTime.now().toUtc().toIso8601String(),
       source: source,
-      error: error.trim(),
-      stackTrace: stackTrace.trim(),
+      error: cleanError,
+      stackTrace: cleanStack,
     );
 
     _memoryLogs.insert(0, entry);
@@ -109,28 +174,31 @@ class BugReportService {
       _memoryLogs.removeRange(maxStoredErrors, _memoryLogs.length);
     }
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final existing = _decodeStoredLogs(prefs.getString(_errorLogsKey));
-      final combined = <CapturedErrorLog>[
-        entry,
-        ...existing.where(
-          (e) =>
-              e.timestampIso != entry.timestampIso ||
-              e.error != entry.error ||
-              e.source != entry.source,
-        ),
-      ];
-      if (combined.length > maxStoredErrors) {
-        combined.removeRange(maxStoredErrors, combined.length);
+    _writeQueue = _writeQueue.then((_) async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final existing = _decodeStoredLogs(prefs.getString(_errorLogsKey));
+        final combined = <CapturedErrorLog>[
+          entry,
+          ...existing.where(
+            (e) =>
+                e.timestampIso != entry.timestampIso ||
+                e.error != entry.error ||
+                e.source != entry.source,
+          ),
+        ];
+        if (combined.length > maxStoredErrors) {
+          combined.removeRange(maxStoredErrors, combined.length);
+        }
+        await prefs.setString(
+          _errorLogsKey,
+          jsonEncode(combined.map((e) => e.toJson()).toList()),
+        );
+      } catch (e) {
+        debugPrint('No se pudo persistir el log de error: $e');
       }
-      await prefs.setString(
-        _errorLogsKey,
-        jsonEncode(combined.map((e) => e.toJson()).toList()),
-      );
-    } catch (e) {
-      debugPrint('No se pudo persistir el log de error: $e');
-    }
+    });
+    return _writeQueue;
   }
 
   /// Returns stored and in-memory error logs, newest first.
@@ -286,13 +354,15 @@ class BugReportService {
           ..writeln();
         for (var i = 0; i < logs.length; i++) {
           final log = logs[i];
-          final clippedStack = log.stackTrace.length > 600
-              ? '${log.stackTrace.substring(0, 600)}\n... [truncado]'
-              : log.stackTrace;
+          final safeError = redactSensitiveText(log.error).replaceAll('```', '` ` `');
+          final safeStackRaw = redactSensitiveText(log.stackTrace).replaceAll('```', '` ` `');
+          final clippedStack = safeStackRaw.length > 600
+              ? '${safeStackRaw.substring(0, 600)}\n... [truncado]'
+              : safeStackRaw;
           buffer
             ..writeln('**#${i + 1} [${log.source}] — ${log.timestampIso}**')
             ..writeln('```text')
-            ..writeln(log.error);
+            ..writeln(safeError);
           if (clippedStack.isNotEmpty) {
             buffer.writeln(clippedStack);
           }
@@ -314,19 +384,32 @@ class BugReportService {
     String category = 'bug',
   }) {
     final cleanTitle = '${titlePrefixForCategory(category)} ${title.trim()}'.trim();
-    final safeBody = markdownBody.length > 6000
-        ? '${markdownBody.substring(0, 6000)}\n\n... [reporte recortado por longitud de URL]'
-        : markdownBody;
+    var bodyLimit = markdownBody.length > 5000 ? 5000 : markdownBody.length;
+    const suffix = '\n\n... [reporte recortado por longitud de URL]';
 
-    return Uri.https(
-      'github.com',
-      '/$repoOwner/$repoName/issues/new',
-      {
-        'title': cleanTitle,
-        'labels': labelForCategory(category),
-        'body': safeBody,
-      },
-    );
+    Uri buildUri(String bodyText) {
+      return Uri.https(
+        'github.com',
+        '/$repoOwner/$repoName/issues/new',
+        {
+          'title': cleanTitle,
+          'labels': labelForCategory(category),
+          'body': bodyText,
+        },
+      );
+    }
+
+    var safeBody = bodyLimit < markdownBody.length
+        ? '${markdownBody.substring(0, bodyLimit)}$suffix'
+        : markdownBody;
+    var uri = buildUri(safeBody);
+
+    while (uri.toString().length > 7000 && bodyLimit > 200) {
+      bodyLimit = (bodyLimit * 0.7).floor();
+      safeBody = '${markdownBody.substring(0, bodyLimit)}$suffix';
+      uri = buildUri(safeBody);
+    }
+    return uri;
   }
 
   /// Opens the pre-filled GitHub Issue form in the system browser.
@@ -365,42 +448,49 @@ class BugReportService {
     };
 
     final fullTitle = '${titlePrefixForCategory(category)} ${title.trim()}'.trim();
-    var response = await http
-        .post(
-          endpoint,
-          headers: headers,
-          body: jsonEncode({
-            'title': fullTitle,
-            'body': markdownBody,
-            'labels': [labelForCategory(category)],
-          }),
-        )
-        .timeout(const Duration(seconds: 20));
-
-    // Retry without labels if non-collaborators lack label assignment permission
-    if (response.statusCode == 403 || response.statusCode == 422) {
-      response = await http
+    final client = http.Client();
+    try {
+      var response = await client
           .post(
             endpoint,
             headers: headers,
             body: jsonEncode({
               'title': fullTitle,
               'body': markdownBody,
+              'labels': [labelForCategory(category)],
             }),
           )
           .timeout(const Duration(seconds: 20));
-    }
 
-    if (response.statusCode == 201) {
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      return GitHubIssueResult(
-        number: (decoded['number'] as num?)?.toInt() ?? 0,
-        htmlUrl: decoded['html_url']?.toString() ?? '',
+      // Retry without labels if non-collaborators lack label assignment permission
+      if (response.statusCode == 403 || response.statusCode == 422) {
+        response = await client
+            .post(
+              endpoint,
+              headers: headers,
+              body: jsonEncode({
+                'title': fullTitle,
+                'body': markdownBody,
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
+      }
+
+      if (response.statusCode == 201) {
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        return GitHubIssueResult(
+          number: (decoded['number'] as num?)?.toInt() ?? 0,
+          htmlUrl: decoded['html_url']?.toString() ?? '',
+        );
+      }
+
+      final safeErr = redactSensitiveText(response.body);
+      final clippedErr = safeErr.length > 240 ? '${safeErr.substring(0, 240)}...' : safeErr;
+      throw Exception(
+        'GitHub rechazó el ticket (${response.statusCode}): $clippedErr',
       );
+    } finally {
+      client.close();
     }
-
-    throw Exception(
-      'GitHub rechazó el ticket (${response.statusCode}): ${response.body}',
-    );
   }
 }
